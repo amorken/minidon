@@ -17,7 +17,10 @@ import (
 
 	"github.com/amorken/minidon"
 	"github.com/amorken/minidon/internal/api"
+	"github.com/amorken/minidon/internal/buffer"
 	"github.com/amorken/minidon/internal/config"
+	"github.com/amorken/minidon/internal/index"
+	"github.com/amorken/minidon/internal/ingest"
 	"github.com/amorken/minidon/internal/mastodon"
 	"github.com/amorken/minidon/internal/model"
 )
@@ -98,7 +101,59 @@ func main() {
 		slog.Warn("configuration warning", "err", err)
 	}
 
-	mux := api.NewRouter(minidon.StaticFS)
+	// 1. Initialize Thread-Safe Bounded Ring Buffer
+	buf := buffer.New(cfg.BufferSize)
+	slog.Info("initialized in-memory ring buffer", "size", cfg.BufferSize)
+
+	// 2. Initialize Search Backend (MeiliSearch or Noop Index)
+	var idx index.Index
+	var err error
+	if cfg.MeiliURL != "" {
+		idx, err = index.NewMeiliIndex(cfg.MeiliURL, cfg.MeiliKey)
+		if err != nil {
+			slog.Error("failed to connect to MeiliSearch; falling back to Noop search index", "err", err)
+			idx = &index.NoopIndex{}
+		} else {
+			slog.Info("connected to MeiliSearch backend", "url", cfg.MeiliURL)
+		}
+	} else {
+		slog.Info("MeiliSearch not configured; using Noop search index")
+		idx = &index.NoopIndex{}
+	}
+
+	// 3. Initialize Mastodon Client (or Fake Client in Dev mode)
+	var client mastodon.Client
+	if cfg.MastodonInstance != "" && cfg.MastodonAccessToken != "" {
+		client, err = mastodon.New(mastodon.Config{
+			Server:       cfg.MastodonInstance,
+			ClientID:     cfg.MastodonClientID,
+			ClientSecret: cfg.MastodonClientSecret,
+			AccessToken:  cfg.MastodonAccessToken,
+		})
+		if err != nil {
+			slog.Error("failed to create Mastodon client; falling back to fake client", "err", err)
+			client = mastodon.NewFakeClient()
+		} else {
+			slog.Info("created Mastodon client", "instance", cfg.MastodonInstance)
+		}
+	} else {
+		slog.Warn("Mastodon credentials missing; starting with fake/dev client")
+		client = mastodon.NewFakeClient()
+	}
+
+	// 4. Initialize and Start Ingest Pipeline
+	pipeline := ingest.NewPipeline(client, buf, idx)
+	runCtx, runCancel := context.WithCancel(context.Background())
+	defer runCancel()
+
+	if err := pipeline.Start(runCtx); err != nil {
+		slog.Error("failed to start ingest pipeline", "err", err)
+		os.Exit(1)
+	}
+	slog.Info("ingest pipeline started successfully")
+
+	// 5. Build Router & Serve
+	mux := api.NewRouter(minidon.StaticFS, pipeline, buf, idx)
 
 	srv := &http.Server{
 		Addr:         cfg.Listen,
@@ -120,6 +175,9 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
 	slog.Info("shutting down", "signal", sig)
+
+	// Stop the ingest pipeline and clean up goroutines
+	runCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
