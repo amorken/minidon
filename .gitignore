@@ -34,6 +34,9 @@ go.work.sum
 *.swo
 *~
 
+# Coding agent
+.kilo
+
 # Go build output
 bin/
 dist/
