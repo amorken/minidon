@@ -2,25 +2,98 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"flag"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/amorken/minidon"
 	"github.com/amorken/minidon/internal/api"
 	"github.com/amorken/minidon/internal/config"
+	"github.com/amorken/minidon/internal/mastodon"
+	"github.com/amorken/minidon/internal/model"
 )
 
 func main() {
+	mode := flag.String("mode", "web", "execution mode (web or cli)")
+	format := flag.String("format", "json", "output format for cli mode (json or text)")
+	flag.Parse()
+
+	if *mode != "web" && *mode != "cli" {
+		fmt.Fprintf(os.Stderr, "invalid mode: %s. valid options are 'web' or 'cli'\n", *mode)
+		os.Exit(1)
+	}
+
+	if *format != "json" && *format != "text" {
+		fmt.Fprintf(os.Stderr, "invalid format: %s. valid options are 'json' or 'text'\n", *format)
+		os.Exit(1)
+	}
+
 	cfg := config.Load()
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	var logWriter io.Writer = os.Stdout
+	if *mode == "cli" {
+		logWriter = os.Stderr
+	}
+
+	logger := slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
+	if *mode == "cli" {
+		if err := cfg.Validate(); err != nil {
+			fmt.Fprintf(os.Stderr, "configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		mClient, err := mastodon.New(mastodon.Config{
+			Server:       cfg.MastodonInstance,
+			ClientID:     cfg.MastodonClientID,
+			ClientSecret: cfg.MastodonClientSecret,
+			AccessToken:  cfg.MastodonAccessToken,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to initialize mastodon client: %v\n", err)
+			os.Exit(1)
+		}
+
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+
+		if err := mClient.Connect(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to connect to stream: %v\n", err)
+			os.Exit(1)
+		}
+		defer mClient.Close()
+
+		slog.Info("starting stream client CLI mode", "format", *format)
+
+		statuses := mClient.Statuses()
+		for {
+			select {
+			case <-ctx.Done():
+				slog.Info("stopping stream client")
+				return
+			case status, ok := <-statuses:
+				if !ok {
+					slog.Info("stream channel closed")
+					return
+				}
+				if err := printStatus(status, *format); err != nil {
+					slog.Error("failed to print status", "err", err)
+				}
+			}
+		}
+	}
+
+	// Web mode (default)
 	if err := cfg.Validate(); err != nil {
 		slog.Warn("configuration warning", "err", err)
 	}
@@ -57,4 +130,104 @@ func main() {
 	}
 
 	slog.Info("server stopped")
+}
+
+func printStatus(s *model.Status, format string) error {
+	if s == nil {
+		return nil
+	}
+
+	if format == "json" {
+		data, err := json.Marshal(s)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	fmt.Println(formatStatusText(s, 0))
+	return nil
+}
+
+func formatStatusText(s *model.Status, indent int) string {
+	if s == nil {
+		return ""
+	}
+
+	indentStr := strings.Repeat("  ", indent)
+	var sb strings.Builder
+
+	if indent == 0 {
+		sb.WriteString("------------------------------------------------------------\n")
+	}
+
+	sb.WriteString(fmt.Sprintf("%sID:        %s\n", indentStr, s.ID))
+	sb.WriteString(fmt.Sprintf("%sTime:      %s\n", indentStr, s.CreatedAt.Local().Format("2006-01-02 15:04:05")))
+
+	acct := s.Account.Acct
+	if s.Account.DisplayName != "" {
+		sb.WriteString(fmt.Sprintf("%sUser:      %s (%s)\n", indentStr, s.Account.DisplayName, acct))
+	} else {
+		sb.WriteString(fmt.Sprintf("%sUser:      %s\n", indentStr, acct))
+	}
+
+	if s.URL != "" {
+		sb.WriteString(fmt.Sprintf("%sURL:       %s\n", indentStr, s.URL))
+	}
+
+	if len(s.MediaAttachments) > 0 {
+		var atts []string
+		for _, att := range s.MediaAttachments {
+			atts = append(atts, fmt.Sprintf("%s [%s]", att.PreviewURL, att.Type))
+		}
+		sb.WriteString(fmt.Sprintf("%sMedia:     %s\n", indentStr, strings.Join(atts, ", ")))
+	}
+
+	if len(s.Tags) > 0 {
+		var tags []string
+		for _, t := range s.Tags {
+			tags = append(tags, "#"+t.Name)
+		}
+		sb.WriteString(fmt.Sprintf("%sTags:      %s\n", indentStr, strings.Join(tags, " ")))
+	}
+
+	sb.WriteString(fmt.Sprintf("%sContent:   %s\n", indentStr, cleanHTML(s.Content)))
+
+	if s.Reblog != nil {
+		sb.WriteString(fmt.Sprintf("%sBOOSTED STATUS:\n", indentStr))
+		sb.WriteString(formatStatusText(s.Reblog, indent+1))
+	}
+
+	if indent == 0 {
+		sb.WriteString("------------------------------------------------------------")
+	}
+
+	return sb.String()
+}
+
+func cleanHTML(html string) string {
+	var sb strings.Builder
+	inTag := false
+	for _, r := range html {
+		if r == '<' {
+			inTag = true
+			continue
+		}
+		if r == '>' {
+			inTag = false
+			continue
+		}
+		if !inTag {
+			sb.WriteRune(r)
+		}
+	}
+	s := sb.String()
+	s = strings.ReplaceAll(s, "&quot;", "\"")
+	s = strings.ReplaceAll(s, "&amp;", "&")
+	s = strings.ReplaceAll(s, "&lt;", "<")
+	s = strings.ReplaceAll(s, "&gt;", ">")
+	s = strings.ReplaceAll(s, "&#39;", "'")
+	s = strings.ReplaceAll(s, "&apos;", "'")
+	return strings.TrimSpace(s)
 }
