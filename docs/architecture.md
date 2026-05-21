@@ -264,9 +264,32 @@ All settings via environment variables (12-factor):
   Options: (a) skip on duplicate ID (requires ID lookup — O(1) with a map),
   (b) accept duplicates and let clients dedup. Map approach preferred.
 
-### SSE vs WebSocket for browser stream
-- SSE is simpler (unidirectional, auto-reconnects, works through HTTP/1.1 proxies).
-- WebSocket adds bidirectionality (not needed). **Decision: SSE.**
+### Streaming transport for browser clients
+
+Three options were considered for streaming statuses from the Go server to the
+browser SPA:
+
+| Aspect | SSE over REST | WebSocket | gRPC / gRPC-Web |
+|--------|--------------|-----------|-----------------|
+| Direction | Server → client (unidirectional) | Bidirectional | Server → client (server-streaming) |
+| Browser API | Native `EventSource` | Native `WebSocket` | Requires gRPC-Web + Envoy proxy |
+| Auto-reconnect | Built into `EventSource` | Manual | Manual or via library |
+| HTTP version | 1.1+ | 1.1+ | Requires HTTP/2 (proxy for browsers) |
+| Infrastructure | None | None | Envoy sidecar/proxy required |
+| Typing | JSON (manual) | JSON (manual) | Protobuf (code-generated) |
+| Debugging | Plain text in browser DevTools | Binary frames | Binary protobuf frames |
+
+**Rationale**: The stream is strictly server → client (no need for bidirectional
+communication). SSE over REST is the simplest option: it uses a standard HTTP GET
+with `Content-Type: text/event-stream`, works through HTTP/1.1 proxies and CDNs,
+provides native browser support via `EventSource` with built-in auto-reconnection,
+and requires no additional infrastructure. WebSocket adds unnecessary complexity
+for a unidirectional stream. gRPC-Web would provide strong typing and code
+generation but requires an Envoy proxy layer between browser and server, adding
+operational overhead that isn't justified for a single streaming endpoint.
+
+**Decision: SSE over REST** — `GET /api/stream` with `text/event-stream`,
+consumed via the browser `EventSource` API.
 
 ### Search backend comparison
 
