@@ -28,5 +28,22 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Go build output
+bin/
+dist/
+
+# Node / frontend
+web/node_modules/
+web/dist/
+web/.vite/
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
