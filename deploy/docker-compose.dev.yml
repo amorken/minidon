@@ -1,0 +1,34 @@
+# Development overrides for docker-compose.yml.
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml up
+#
+# This override:
+#   - Skips the multi-stage build and mounts the source tree directly.
+#   - Runs MeiliSearch in development mode (no master key required).
+#   - Exposes MeiliSearch on the host for direct access / dashboard.
+#
+# TODO: add live-reload sidecar (e.g. air for Go, Vite dev server) once
+# the binary is runnable.
+
+version: "3.9"
+
+services:
+  minidon:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      # TODO: replace with a dev-specific Dockerfile stage that uses `air`
+      # for hot reload once business logic is implemented.
+    environment:
+      MINIDON_MEILI_KEY: ""  # No auth in dev
+    # Mount source for easier debugging (binary still rebuilt manually)
+    volumes:
+      - ..:/workspace:ro
+
+  meilisearch:
+    environment:
+      MEILI_ENV: development  # Enables /dashboard UI, disables master key requirement
+      MEILI_MASTER_KEY: ""
+    ports:
+      - "7700:7700"  # Expose dashboard to host
