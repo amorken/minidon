@@ -1,10 +1,57 @@
-// Package static serves the compiled React/Vite SPA embedded directly in
-// the Go binary via go:embed.
-//
-// The embedded filesystem is rooted at web/dist (relative to the module
-// root).  All requests that do not match an API route are served from this
-// filesystem, with a fallback to index.html for client-side routing support.
-//
-// TODO: add //go:embed web/dist directive and implement Handler() http.Handler
-// with SPA fallback.
 package static
+
+import (
+	"io/fs"
+	"net/http"
+	"path"
+	"strings"
+)
+
+func NewHandler(fsys fs.FS) http.Handler {
+	sub, err := fs.Sub(fsys, "web/dist")
+	if err != nil {
+		panic("static: cannot create sub FS: " + err.Error())
+	}
+	fileServer := http.FileServer(http.FS(sub))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		cleanPath := path.Clean("/" + r.URL.Path)
+
+		if strings.HasPrefix(cleanPath, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		name := strings.TrimPrefix(cleanPath, "/")
+		f, err := sub.Open(name)
+		if err == nil {
+			stat, statErr := f.Stat()
+			f.Close()
+			if statErr == nil && !stat.IsDir() {
+				setCacheHeaders(w, cleanPath)
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		r.URL.Path = "/"
+		setCacheHeaders(w, "/index.html")
+		fileServer.ServeHTTP(w, r)
+	})
+}
+
+func setCacheHeaders(w http.ResponseWriter, cleanPath string) {
+	switch {
+	case cleanPath == "/index.html":
+		w.Header().Set("Cache-Control", "no-cache")
+	case strings.HasPrefix(cleanPath, "/assets/"):
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	default:
+		w.Header().Set("Cache-Control", "public, max-age=300")
+	}
+}
