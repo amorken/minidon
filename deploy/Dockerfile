@@ -31,6 +31,7 @@ COPY go.mod go.sum* ./
 RUN go mod download
 
 # Copy Go source
+COPY embed.go ./
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 
