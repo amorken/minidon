@@ -1,0 +1,41 @@
+{
+  "name": "minidon",
+  "image": "mcr.microsoft.com/devcontainers/go:1.26-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:2.0.0": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/devcontainer-community/devcontainer-features/delta:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "go.useLanguageServer": true,
+        "go.lintTool": "staticcheck",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[go]": {
+          "editor.defaultFormatter": "golang.go"
+        }
+      }
+    }
+  },
+  "postCreateCommand": "go install honnef.co/go/tools/cmd/staticcheck@latest && npm install -g npm@latest",
+  "forwardPorts": [5173, 7700],
+  "portsAttributes": {
+    "5173": {
+      "label": "Vite Dev Server"
+    },
+    "7700": {
+      "label": "MeiliSearch"
+    }
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace"
+}
