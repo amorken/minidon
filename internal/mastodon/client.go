@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	mstdn "github.com/mattn/go-mastodon"
@@ -16,6 +17,7 @@ import (
 type Client interface {
 	Connect(ctx context.Context) error
 	Statuses() <-chan *model.Status
+	Connected() bool
 	Close() error
 }
 
@@ -57,6 +59,11 @@ type mastodonClient struct {
 	out       chan *model.Status
 	done      chan struct{}
 	closeOnce sync.Once
+	isConnected atomic.Bool
+}
+
+func (m *mastodonClient) Connected() bool {
+	return m.isConnected.Load()
 }
 
 func (m *mastodonClient) Connect(ctx context.Context) error {
@@ -93,6 +100,7 @@ func (m *mastodonClient) stream(ctx context.Context) {
 
 		events, err := m.ws.StreamingWSPublic(ctx, false)
 		if err != nil {
+			m.isConnected.Store(false)
 			slog.Error("mastodon stream connect error", "err", err, "backoff", backoff)
 			m.sleep(ctx, backoff)
 			backoff = nextBackoff(backoff)
@@ -100,13 +108,16 @@ func (m *mastodonClient) stream(ctx context.Context) {
 		}
 
 		backoff = 1 * time.Second
+		m.isConnected.Store(true)
 		slog.Info("mastodon stream connected", "server", m.cfg.Server)
 
 		if !m.drain(ctx, events) {
+			m.isConnected.Store(false)
 			m.closeOut()
 			return
 		}
 
+		m.isConnected.Store(false)
 		slog.Warn("mastodon stream disconnected, reconnecting")
 	}
 }

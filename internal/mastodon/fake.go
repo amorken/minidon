@@ -48,8 +48,12 @@ func (f *FakeClient) Send(s *model.Status) bool {
 	}
 }
 
+func (f *FakeClient) Connected() bool {
+	return f.IsConnected()
+}
+
 func (f *FakeClient) IsConnected() bool {
-	return f.connected.Load()
+	return f.connected.Load() && !f.closed.Load()
 }
 
 func (f *FakeClient) IsClosed() bool {
