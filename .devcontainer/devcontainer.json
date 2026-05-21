@@ -27,13 +27,16 @@
     }
   },
   "postCreateCommand": "go install honnef.co/go/tools/cmd/staticcheck@latest && npm install -g npm@latest",
-  "forwardPorts": [5173, 7700],
+  "forwardPorts": [5173, 7700, 8080],
   "portsAttributes": {
     "5173": {
       "label": "Vite Dev Server"
     },
     "7700": {
       "label": "MeiliSearch"
+    },
+    "8080": {
+      "label": "App Server"
     }
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
