@@ -1,7 +1,8 @@
 # minidon — Architecture
 
-> **Draft** — this document reflects the planned architecture after the initial
-> scaffolding pass.  No business logic is implemented yet.
+> Sections 3 (HTTP API & Static Assets), 6 (Build), and 7 (Configuration) are now
+> implemented. Remaining component descriptions (Mastodon client, ingest, buffer,
+> index) are still planned.
 
 ---
 
@@ -121,18 +122,39 @@ type Index interface {
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/timeline?limit=N` | Most-recent N statuses from the ring buffer (default 50, max 200) |
-| GET | `/api/search?q=&limit=&offset=` | Full-text search via MeiliSearch |
-| GET | `/api/stream` | SSE stream; each event is a JSON `model.Status` with type `"status"` |
+| GET | `/api/timeline?limit=N` | Most-recent N statuses from the ring buffer (default 50, max 200) — **returns 501** |
+| GET | `/api/search?q=&limit=&offset=` | Full-text search via MeiliSearch — **returns 501** |
+| GET | `/api/stream` | SSE stream — **returns 501** |
 | GET | `/healthz` | Liveness probe — always 200 OK |
-| GET | `/readyz` | Readiness probe — 200 once Mastodon client is connected |
-| GET | `/*` | Embedded SPA with `index.html` fallback for client-side routing |
+| GET | `/readyz` | Readiness probe — 200 OK (will check Mastodon connection when wired) |
+
+Routes are registered using Go 1.22 `http.ServeMux` method+pattern matching
+(e.g. `mux.HandleFunc("GET /api/timeline", ...)`). The SPA handler is mounted
+on `GET /` with lower priority than specific patterns.
 
 ### Static Assets (`internal/static`)
 
-`//go:embed web/dist` embeds the compiled Vite output into the binary at build time.
-Requests that do not match `/api/*` are served from the embedded FS, with
-`index.html` returned for any path that does not correspond to a file (SPA fallback).
+The `//go:embed web/dist` directive lives in `embed.go` at the module root (because
+`go:embed` paths are relative to the source file directory, it must be at or above
+the module root — `cmd/minidon/main.go` is too deep). The embedded `embed.FS` is
+passed to `static.NewHandler(fsys)`.
+
+`NewHandler` creates a sub-filesystem rooted at `web/dist` and returns an
+`http.Handler` that:
+
+1. Rejects non-GET/HEAD requests with 405.
+2. Returns 404 for any path starting with `/api/` (no SPA fallback for API routes).
+3. Attempts to serve the requested file from the embedded FS.
+4. If the file does not exist (or is a directory), serves `index.html` as the
+   SPA fallback for client-side routing.
+
+**Cache-Control headers:**
+
+| Path | Cache-Control |
+|------|---------------|
+| `/index.html` | `no-cache` |
+| `/assets/*` (hashed filenames) | `public, max-age=31536000, immutable` |
+| Everything else | `public, max-age=300` |
 
 ---
 
@@ -182,6 +204,10 @@ Requests that do not match `/api/*` are served from the embedded FS, with
 make web    # Node 20: npm ci && npm run build → web/dist/
 make build  # Go 1.22: go build → bin/minidon (embeds web/dist)
 ```
+
+The resulting binary is self-contained: `go:embed` bundles `web/dist` into the
+executable at compile time. Running `./bin/minidon` starts an HTTP server on
+`:8080` (configurable via `MINIDON_LISTEN`) that serves the SPA and API routes.
 
 ### Docker (Multi-Stage)
 
