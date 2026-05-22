@@ -6,12 +6,13 @@ CMD        := ./cmd/minidon
 GOFLAGS    := CGO_ENABLED=0
 LDFLAGS    := -trimpath -ldflags="-s -w"
 WEB_DIR    := web
+WEB_SRC    := $(shell find $(WEB_DIR) -type f -not -path '$(WEB_DIR)/node_modules/*' -not -path '$(WEB_DIR)/dist/*' -not -path '$(WEB_DIR)/.vite/*')
 
 # ── Default target ────────────────────────────────────────────────────────────
 all: web build
 
 ## build: compile the Go binary (embeds web/dist)
-build:
+build: web
 	@mkdir -p bin
 	$(GOFLAGS) go build $(LDFLAGS) -o $(BINARY) $(CMD)
 	@echo "Built → $(BINARY)"
@@ -29,9 +30,16 @@ lint:
 	go vet ./...
 	@command -v staticcheck >/dev/null 2>&1 && staticcheck ./... || echo "staticcheck not installed; skipping"
 
-## web: install Node deps and build the frontend
-web:
-	cd $(WEB_DIR) && npm ci && npm run build
+$(WEB_DIR)/node_modules/.install-stamp: $(WEB_DIR)/package.json $(WEB_DIR)/package-lock.json
+	cd $(WEB_DIR) && npm ci
+	@touch $@
+
+$(WEB_DIR)/dist/.build-stamp: $(WEB_SRC) $(WEB_DIR)/node_modules/.install-stamp
+	cd $(WEB_DIR) && npm run build
+	@touch $@
+
+## web: build frontend assets if changed
+web: $(WEB_DIR)/dist/.build-stamp
 
 ## dev-web: start the Vite dev server (hot module replacement)
 dev-web:
@@ -55,7 +63,7 @@ compose-down:
 
 ## clean: remove build artifacts
 clean:
-	rm -rf bin/ $(WEB_DIR)/dist/ $(WEB_DIR)/.vite/
+	rm -rf bin/ $(WEB_DIR)/dist/ $(WEB_DIR)/.vite/ $(WEB_DIR)/node_modules/.install-stamp
 
 ## help: show this help message
 help:
