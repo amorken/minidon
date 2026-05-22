@@ -13,6 +13,7 @@ type Config struct {
 	MastodonClientSecret string
 	MastodonAccessToken  string
 	MastodonStreamPath   string
+	MastodonStream       string
 	MeiliURL             string
 	MeiliKey             string
 	BufferSize           int
@@ -29,6 +30,7 @@ func Load() *Config {
 		MastodonClientSecret: os.Getenv("MINIDON_MASTODON_CLIENT_SECRET"),
 		MastodonAccessToken:  os.Getenv("MINIDON_MASTODON_ACCESS_TOKEN"),
 		MastodonStreamPath:   getEnv("MINIDON_MASTODON_STREAM_PATH", "api/v1/streaming"),
+		MastodonStream:       getEnv("MINIDON_MASTODON_STREAM", "user"),
 	}
 	return cfg
 }
@@ -39,6 +41,9 @@ func (c *Config) Validate() error {
 	}
 	if c.MastodonAccessToken == "" {
 		return fmt.Errorf("MINIDON_MASTODON_ACCESS_TOKEN is required")
+	}
+	if c.MastodonStream != "user" && c.MastodonStream != "public" {
+		return fmt.Errorf("MINIDON_MASTODON_STREAM must be 'user' or 'public', got %q", c.MastodonStream)
 	}
 	if c.BufferSize <= 0 {
 		return fmt.Errorf("MINIDON_BUFFER_SIZE must be positive, got %d", c.BufferSize)

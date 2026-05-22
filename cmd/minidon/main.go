@@ -61,6 +61,7 @@ func main() {
 			ClientID:     cfg.MastodonClientID,
 			ClientSecret: cfg.MastodonClientSecret,
 			AccessToken:  cfg.MastodonAccessToken,
+			Stream:       cfg.MastodonStream,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to initialize mastodon client: %v\n", err)
@@ -79,6 +80,7 @@ func main() {
 		slog.Info("starting stream client CLI mode", "format", *format)
 
 		statuses := mClient.Statuses()
+		slog.Info("got statuses")
 		for {
 			select {
 			case <-ctx.Done():
@@ -129,6 +131,7 @@ func main() {
 			ClientID:     cfg.MastodonClientID,
 			ClientSecret: cfg.MastodonClientSecret,
 			AccessToken:  cfg.MastodonAccessToken,
+			Stream:       cfg.MastodonStream,
 		})
 		if err != nil {
 			slog.Error("failed to create Mastodon client; falling back to fake client", "err", err)

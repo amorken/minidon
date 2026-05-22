@@ -26,6 +26,7 @@ type Config struct {
 	ClientID     string
 	ClientSecret string
 	AccessToken  string
+	Stream       string
 }
 
 func New(cfg Config) (Client, error) {
@@ -98,7 +99,13 @@ func (m *mastodonClient) stream(ctx context.Context) {
 		default:
 		}
 
-		events, err := m.ws.StreamingWSPublic(ctx, false)
+		var events chan mstdn.Event
+		var err error
+		if m.cfg.Stream == "public" {
+			events, err = m.ws.StreamingWSPublic(ctx, false)
+		} else {
+			events, err = m.ws.StreamingWSUser(ctx)
+		}
 		if err != nil {
 			m.isConnected.Store(false)
 			slog.Error("mastodon stream connect error", "err", err, "backoff", backoff)
@@ -123,22 +130,31 @@ func (m *mastodonClient) stream(ctx context.Context) {
 }
 
 func (m *mastodonClient) drain(ctx context.Context, events chan mstdn.Event) bool {
+	slog.Info("mastodonClient.drain starting")
 	for {
 		select {
 		case <-m.done:
+			slog.Info("mastodon client done.")
 			return false
 		case <-ctx.Done():
+			slog.Info("context done.")
 			return false
 		case ev, ok := <-events:
 			if !ok {
+				slog.Error("mastodon event channel closed")
 				return true
 			}
-			if update, ok := ev.(*mstdn.UpdateEvent); ok {
+			switch e := ev.(type) {
+			case *mstdn.UpdateEvent:
 				select {
-				case m.out <- convertStatus(update.Status):
+				case m.out <- convertStatus(e.Status):
 				default:
-					slog.Warn("mastodon output channel full, dropping status", "id", update.Status.ID)
+					slog.Warn("mastodon output channel full, dropping status", "id", e.Status.ID)
 				}
+			case *mstdn.ErrorEvent:
+				slog.Error("mastodon stream error event", "err", e.Err)
+			default:
+				slog.Info("mastodon unhandled event type", "type", fmt.Sprintf("%T", ev))
 			}
 		}
 	}
