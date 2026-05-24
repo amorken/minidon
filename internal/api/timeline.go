@@ -1,11 +1,8 @@
-// Package api — timeline handler.
-//
-// GET /api/timeline?limit=N returns the N most-recent statuses from the
-// in-memory ring buffer as a JSON array.  Default limit: 50, max: 200.
 package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -14,22 +11,24 @@ import (
 
 func timelineHandler(buf *buffer.Buffer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		limitStr := r.URL.Query().Get("limit")
 		limit := 50
-		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-			if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
-				limit = parsed
+		if limitStr != "" {
+			var err error
+			limit, err = strconv.Atoi(limitStr)
+			if err != nil || limit <= 0 {
+				http.Error(w, "invalid limit parameter", http.StatusBadRequest)
+				return
+			}
+			if limit > 200 {
+				limit = 200
 			}
 		}
 
-		if limit > 200 {
-			limit = 200
-		}
-
 		statuses := buf.Recent(limit)
-
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(statuses); err != nil {
-			http.Error(w, "failed to encode timeline statuses", http.StatusInternalServerError)
+			slog.Error("failed to encode timeline", "err", err)
 		}
 	}
 }

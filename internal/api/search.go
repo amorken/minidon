@@ -1,12 +1,8 @@
-// Package api — search handler.
-//
-// GET /api/search?q=<query>&limit=<n>&offset=<n> proxies the query to the
-// Index backend and returns matching statuses as a JSON object with
-// "hits", "total", "limit", and "offset" fields.
 package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -17,39 +13,50 @@ func searchHandler(idx index.Index) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		if q == "" {
-			http.Error(w, "query parameter 'q' is required", http.StatusBadRequest)
+			http.Error(w, "missing search query parameter 'q'", http.StatusBadRequest)
 			return
 		}
 
+		limitStr := r.URL.Query().Get("limit")
 		limit := 20
-		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-			if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
-				limit = parsed
+		if limitStr != "" {
+			var err error
+			limit, err = strconv.Atoi(limitStr)
+			if err != nil || limit <= 0 {
+				http.Error(w, "invalid limit parameter", http.StatusBadRequest)
+				return
+			}
+			if limit > 100 {
+				limit = 100
 			}
 		}
-		if limit > 100 {
-			limit = 100
-		}
 
+		offsetStr := r.URL.Query().Get("offset")
 		offset := 0
-		if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-			if parsed, err := strconv.Atoi(offsetStr); err == nil && parsed >= 0 {
-				offset = parsed
+		if offsetStr != "" {
+			var err error
+			offset, err = strconv.Atoi(offsetStr)
+			if err != nil || offset < 0 {
+				http.Error(w, "invalid offset parameter", http.StatusBadRequest)
+				return
 			}
 		}
 
-		result, err := idx.Search(q, index.SearchOptions{
+		opts := index.SearchOptions{
 			Limit:  limit,
 			Offset: offset,
-		})
+		}
+
+		result, err := idx.Search(r.Context(), q, opts)
 		if err != nil {
-			http.Error(w, "search request failed", http.StatusInternalServerError)
+			slog.Error("search failed", "err", err, "query", q)
+			http.Error(w, "search backend error", http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(result); err != nil {
-			http.Error(w, "failed to encode search response", http.StatusInternalServerError)
+			slog.Error("failed to encode search result", "err", err)
 		}
 	}
 }

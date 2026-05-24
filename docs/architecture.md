@@ -240,6 +240,7 @@ All settings via environment variables (12-factor):
 | `MINIDON_MASTODON_INSTANCE` | *(required)* | Mastodon instance hostname |
 | `MINIDON_MEILI_URL` | `http://localhost:7700` | MeiliSearch URL |
 | `MINIDON_MEILI_KEY` | `""` | MeiliSearch API key |
+| `MINIDON_DISABLE_SEARCH` | `false` | Disable search functionality / MeiliSearch connection |
 | `MINIDON_BUFFER_SIZE` | `500` | Ring buffer capacity |
 
 ---

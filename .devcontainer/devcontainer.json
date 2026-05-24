@@ -13,8 +13,7 @@
       "extensions": [
         "golang.go",
         "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "kilocode.kilo-code"
+        "esbenp.prettier-vscode"
       ],
       "settings": {
         "go.useLanguageServer": true,
@@ -27,7 +26,6 @@
       }
     }
   },
-  "onCreateCommand": "sudo chown -hR --from=root:root vscode:vscode ~/.local/",
   "postCreateCommand": "go install honnef.co/go/tools/cmd/staticcheck@latest && npm install -g npm@latest",
   "forwardPorts": [5173, 7700, 8080],
   "portsAttributes": {
@@ -44,6 +42,6 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
   "workspaceFolder": "/workspace",
   "mounts": [
-    "source=${localEnv:HOME}/.local/share/kilo/auth.json,target=/home/vscode/.local/share/kilo/auth.json,type=bind,consistency=cached"
+    "type=bind,source=/tmp,target=/tmp"
   ]
 }

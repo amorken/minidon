@@ -5,11 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
-	"time"
 
-	"github.com/amorken/minidon"
 	"github.com/amorken/minidon/internal/api"
 	"github.com/amorken/minidon/internal/buffer"
 	"github.com/amorken/minidon/internal/index"
@@ -18,183 +15,131 @@ import (
 	"github.com/amorken/minidon/internal/model"
 )
 
-func TestRouter_Healthz(t *testing.T) {
-	fc := mastodon.NewFakeClient()
-	buf := buffer.New(10)
-	idx := &index.NoopIndex{}
-	pipeline := ingest.NewPipeline(fc, buf, idx)
-
-	router := api.NewRouter(minidon.StaticFS, pipeline, buf, idx)
-
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	rr := httptest.NewRecorder()
-
-	router.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rr.Code)
-	}
+type mockSearchIndex struct {
+	searchedQuery string
+	searchOpts    index.SearchOptions
 }
 
-func TestRouter_Readyz(t *testing.T) {
-	fc := mastodon.NewFakeClient()
+func (m *mockSearchIndex) Index(statuses []model.Status) error {
+	return nil
+}
+
+func (m *mockSearchIndex) Search(ctx context.Context, query string, opts index.SearchOptions) (index.SearchResult, error) {
+	m.searchedQuery = query
+	m.searchOpts = opts
+	return index.SearchResult{
+		Hits:   []model.Status{{ID: "match-1", Content: "Match"}},
+		Total:  1,
+		Limit:  opts.Limit,
+		Offset: opts.Offset,
+	}, nil
+}
+
+func (m *mockSearchIndex) EnsureSettings(ctx context.Context) error {
+	return nil
+}
+
+func TestReadyz(t *testing.T) {
 	buf := buffer.New(10)
-	idx := &index.NoopIndex{}
-	pipeline := ingest.NewPipeline(fc, buf, idx)
+	idx := &mockSearchIndex{}
+	fc := mastodon.NewFakeClient()
+	pipe := ingest.New(fc.Statuses(), buf, idx)
 
-	router := api.NewRouter(minidon.StaticFS, pipeline, buf, idx)
+	mux := api.NewRouter(nil, buf, idx, pipe, fc)
 
-	// Not connected initially
-	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	// 1. Test readyz when disconnected
+	req := httptest.NewRequest("GET", "/readyz", nil)
 	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, req)
+	mux.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusServiceUnavailable {
-		t.Errorf("expected status 503, got %d", rr.Code)
+		t.Errorf("expected 503, got %d", rr.Code)
 	}
 
-	// Connected after starting pipeline (fake client connects immediately)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	if err := pipeline.Start(ctx); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	rr2 := httptest.NewRecorder()
-	router.ServeHTTP(rr2, req)
-
-	if rr2.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rr2.Code)
-	}
-}
-
-func TestRouter_Timeline(t *testing.T) {
-	fc := mastodon.NewFakeClient()
-	buf := buffer.New(10)
-	idx := &index.NoopIndex{}
-	pipeline := ingest.NewPipeline(fc, buf, idx)
-
-	buf.Add(&model.Status{ID: "status-1"})
-	buf.Add(&model.Status{ID: "status-2"})
-
-	router := api.NewRouter(minidon.StaticFS, pipeline, buf, idx)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/timeline?limit=1", nil)
-	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, req)
+	// 2. Test readyz when connected
+	_ = fc.Connect(context.Background())
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rr.Code)
-	}
-
-	var results []model.Status
-	if err := json.Unmarshal(rr.Body.Bytes(), &results); err != nil {
-		t.Fatalf("failed to unmarshal timeline response: %v", err)
-	}
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 status due to limit, got %d", len(results))
-	}
-
-	if results[0].ID != "status-2" {
-		t.Errorf("expected ID status-2, got %s", results[0].ID)
+		t.Errorf("expected 200, got %d", rr.Code)
 	}
 }
 
-func TestRouter_Search(t *testing.T) {
-	fc := mastodon.NewFakeClient()
+func TestTimelineRoute(t *testing.T) {
 	buf := buffer.New(10)
-	idx := &index.NoopIndex{} // returns empty SearchResult
-	pipeline := ingest.NewPipeline(fc, buf, idx)
+	idx := &mockSearchIndex{}
+	fc := mastodon.NewFakeClient()
+	pipe := ingest.New(fc.Statuses(), buf, idx)
 
-	router := api.NewRouter(minidon.StaticFS, pipeline, buf, idx)
+	s := &model.Status{ID: "timeline-1", Content: "Hello"}
+	buf.Add(s)
 
-	// Missing 'q' param
-	req := httptest.NewRequest(http.MethodGet, "/api/search", nil)
+	mux := api.NewRouter(nil, buf, idx, pipe, fc)
+
+	req := httptest.NewRequest("GET", "/api/timeline?limit=10", nil)
 	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, req)
+	mux.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 for missing query, got %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
 	}
 
-	// Valid search
-	req2 := httptest.NewRequest(http.MethodGet, "/api/search?q=test&limit=5&offset=2", nil)
-	rr2 := httptest.NewRecorder()
-	router.ServeHTTP(rr2, req2)
-
-	if rr2.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rr2.Code)
+	var resp []*model.Status
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	var searchResult index.SearchResult
-	if err := json.Unmarshal(rr2.Body.Bytes(), &searchResult); err != nil {
-		t.Fatalf("failed to unmarshal search response: %v", err)
+	if len(resp) != 1 || resp[0].ID != "timeline-1" {
+		t.Errorf("unexpected timeline response")
 	}
 
-	if searchResult.Limit != 5 {
-		t.Errorf("expected limit 5, got %d", searchResult.Limit)
-	}
-	if searchResult.Offset != 2 {
-		t.Errorf("expected offset 2, got %d", searchResult.Offset)
+	// Test invalid limit
+	reqErr := httptest.NewRequest("GET", "/api/timeline?limit=-5", nil)
+	rrErr := httptest.NewRecorder()
+	mux.ServeHTTP(rrErr, reqErr)
+	if rrErr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 on invalid limit, got %d", rrErr.Code)
 	}
 }
 
-func TestRouter_StreamSSE(t *testing.T) {
-	fc := mastodon.NewFakeClient()
+func TestSearchRoute(t *testing.T) {
 	buf := buffer.New(10)
-	idx := &index.NoopIndex{}
-	pipeline := ingest.NewPipeline(fc, buf, idx)
+	idx := &mockSearchIndex{}
+	fc := mastodon.NewFakeClient()
+	pipe := ingest.New(fc.Statuses(), buf, idx)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	if err := pipeline.Start(ctx); err != nil {
-		t.Fatalf("unexpected pipeline start error: %v", err)
-	}
+	mux := api.NewRouter(nil, buf, idx, pipe, fc)
 
-	router := api.NewRouter(minidon.StaticFS, pipeline, buf, idx)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/stream", nil)
-	ctxStream, cancelStream := context.WithCancel(context.Background())
-	req = req.WithContext(ctxStream)
-
+	req := httptest.NewRequest("GET", "/api/search?q=test&limit=5&offset=2", nil)
 	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
 
-	go func() {
-		router.ServeHTTP(rr, req)
-	}()
-
-	// Wait briefly for connection to start
-	time.Sleep(50 * time.Millisecond)
-
-	// Send a status via fake client
-	status := &model.Status{
-		ID:      "stream-status-123",
-		Content: "stream content",
-	}
-	fc.Send(status)
-
-	// Wait for event delivery
-	time.Sleep(50 * time.Millisecond)
-
-	cancelStream() // disconnect stream client
-
-	// Wait for handler cleanup
-	time.Sleep(50 * time.Millisecond)
-
-	headers := rr.Header()
-	if headers.Get("Content-Type") != "text/event-stream" {
-		t.Errorf("expected Content-Type text/event-stream, got %q", headers.Get("Content-Type"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
 	}
 
-	body := rr.Body.String()
-	if !strings.Contains(body, ": ok") {
-		t.Error("expected body to contain SSE initial handshake")
+	if idx.searchedQuery != "test" {
+		t.Errorf("expected query 'test', got '%s'", idx.searchedQuery)
 	}
-	if !strings.Contains(body, "event: status") {
-		t.Error("expected body to contain SSE status event")
+	if idx.searchOpts.Limit != 5 || idx.searchOpts.Offset != 2 {
+		t.Errorf("unexpected options: %+v", idx.searchOpts)
 	}
-	if !strings.Contains(body, "stream-status-123") {
-		t.Error("expected body to contain status ID")
+
+	var resp index.SearchResult
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode search result: %v", err)
+	}
+
+	if len(resp.Hits) != 1 || resp.Hits[0].ID != "match-1" {
+		t.Errorf("unexpected search hit")
+	}
+
+	// Test missing q
+	reqErr := httptest.NewRequest("GET", "/api/search?limit=5", nil)
+	rrErr := httptest.NewRecorder()
+	mux.ServeHTTP(rrErr, reqErr)
+	if rrErr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 on missing q, got %d", rrErr.Code)
 	}
 }

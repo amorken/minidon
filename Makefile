@@ -22,7 +22,7 @@ run: build
 	./$(BINARY)
 
 ## test: run all Go tests
-test:
+test: web
 	go test ./...
 
 ## lint: run go vet and staticcheck

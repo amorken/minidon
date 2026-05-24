@@ -1,6 +1,7 @@
 package index_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/amorken/minidon/internal/index"
@@ -19,7 +20,7 @@ func TestNoopIndex(t *testing.T) {
 		t.Fatalf("unexpected error for NoopIndex.Index: %v", err)
 	}
 
-	res, err := idx.Search("hello", index.SearchOptions{Limit: 10, Offset: 0})
+	res, err := idx.Search(context.Background(), "hello", index.SearchOptions{Limit: 10, Offset: 0})
 	if err != nil {
 		t.Fatalf("unexpected error for NoopIndex.Search: %v", err)
 	}

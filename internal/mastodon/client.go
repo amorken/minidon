@@ -18,6 +18,7 @@ type Client interface {
 	Connect(ctx context.Context) error
 	Statuses() <-chan *model.Status
 	Connected() bool
+	IsConnected() bool
 	Close() error
 }
 
@@ -54,16 +55,20 @@ func New(cfg Config) (Client, error) {
 }
 
 type mastodonClient struct {
-	cfg       Config
-	client    *mstdn.Client
-	ws        *mstdn.WSClient
-	out       chan *model.Status
-	done      chan struct{}
-	closeOnce sync.Once
+	cfg         Config
+	client      *mstdn.Client
+	ws          *mstdn.WSClient
+	out         chan *model.Status
+	done        chan struct{}
+	closeOnce   sync.Once
 	isConnected atomic.Bool
 }
 
 func (m *mastodonClient) Connected() bool {
+	return m.isConnected.Load()
+}
+
+func (m *mastodonClient) IsConnected() bool {
 	return m.isConnected.Load()
 }
 
@@ -116,7 +121,10 @@ func (m *mastodonClient) stream(ctx context.Context) {
 
 		backoff = 1 * time.Second
 		m.isConnected.Store(true)
-		slog.Info("mastodon stream connected", "server", m.cfg.Server)
+		slog.Info("mastodon stream connected", "server", m.cfg.Server, "stream", m.cfg.Stream)
+
+		// Concurrent backfill to fill in timeline gaps
+		go m.backfill(ctx)
 
 		if !m.drain(ctx, events) {
 			m.isConnected.Store(false)
@@ -129,19 +137,54 @@ func (m *mastodonClient) stream(ctx context.Context) {
 	}
 }
 
+func (m *mastodonClient) backfill(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-m.done:
+		return
+	default:
+	}
+
+	slog.Info("starting mastodon REST backfill", "server", m.cfg.Server, "stream", m.cfg.Stream)
+	var statuses []*mstdn.Status
+	var err error
+	if m.cfg.Stream == "public" {
+		statuses, err = m.client.GetTimelinePublic(ctx, false, nil)
+	} else {
+		statuses, err = m.client.GetTimelineHome(ctx, nil)
+	}
+
+	if err != nil {
+		slog.Error("mastodon REST backfill error", "err", err)
+		return
+	}
+
+	slog.Info("mastodon REST backfill fetched statuses", "count", len(statuses))
+
+	// Send statuses from oldest to newest to preserve chronological ordering
+	for i := len(statuses) - 1; i >= 0; i-- {
+		select {
+		case <-ctx.Done():
+			return
+		case <-m.done:
+			return
+		case m.out <- convertStatus(statuses[i]):
+		default:
+			slog.Warn("mastodon output channel full during backfill, dropping status", "id", statuses[i].ID)
+		}
+	}
+}
+
 func (m *mastodonClient) drain(ctx context.Context, events chan mstdn.Event) bool {
-	slog.Info("mastodonClient.drain starting")
 	for {
 		select {
 		case <-m.done:
-			slog.Info("mastodon client done.")
 			return false
 		case <-ctx.Done():
-			slog.Info("context done.")
 			return false
 		case ev, ok := <-events:
 			if !ok {
-				slog.Error("mastodon event channel closed")
 				return true
 			}
 			switch e := ev.(type) {

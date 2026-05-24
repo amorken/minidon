@@ -17,6 +17,7 @@ type Config struct {
 	MeiliURL             string
 	MeiliKey             string
 	BufferSize           int
+	DisableSearch        bool
 }
 
 func Load() *Config {
@@ -25,6 +26,7 @@ func Load() *Config {
 		MeiliURL:             getEnv("MINIDON_MEILI_URL", "http://localhost:7700"),
 		MeiliKey:             os.Getenv("MINIDON_MEILI_KEY"),
 		BufferSize:           getEnvInt("MINIDON_BUFFER_SIZE", 500),
+		DisableSearch:        getEnvBool("MINIDON_DISABLE_SEARCH", false),
 		MastodonInstance:     os.Getenv("MINIDON_MASTODON_INSTANCE"),
 		MastodonClientID:     os.Getenv("MINIDON_MASTODON_CLIENT_ID"),
 		MastodonClientSecret: os.Getenv("MINIDON_MASTODON_CLIENT_SECRET"),
@@ -68,4 +70,16 @@ func getEnvInt(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fallback
+	}
+	return b
 }

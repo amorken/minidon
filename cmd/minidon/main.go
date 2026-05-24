@@ -25,9 +25,43 @@ import (
 	"github.com/amorken/minidon/internal/model"
 )
 
+func printHelp() {
+	fmt.Println("Usage: minidon [options]")
+	fmt.Println()
+	fmt.Println("A Mastodon public-timeline streaming web app.")
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  -h, --help      Show this help message and exit")
+	fmt.Println("  --mode          execution mode: 'web' or 'cli' (default: \"web\")")
+	fmt.Println("  --format        output format for cli mode: 'json' or 'text' (default: \"json\")")
+	fmt.Println("  --disable-search Disable search functionality (default: false)")
+	fmt.Println()
+	fmt.Println("Configuration (via environment variables):")
+	fmt.Println("  MINIDON_LISTEN                  TCP address to listen on (default: \":8080\")")
+	fmt.Println("  MINIDON_MASTODON_INSTANCE       Mastodon instance hostname (required for live streaming)")
+	fmt.Println("  MINIDON_MASTODON_ACCESS_TOKEN   Mastodon access token (required for live streaming)")
+	fmt.Println("  MINIDON_MASTODON_CLIENT_ID      Mastodon client ID (optional)")
+	fmt.Println("  MINIDON_MASTODON_CLIENT_SECRET  Mastodon client secret (optional)")
+	fmt.Println("  MINIDON_MASTODON_STREAM         Mastodon stream type: 'user' or 'public' (default: \"user\")")
+	fmt.Println("  MINIDON_MASTODON_STREAM_PATH    Mastodon streaming API path (default: \"api/v1/streaming\")")
+	fmt.Println("  MINIDON_MEILI_URL               MeiliSearch base URL (default: \"http://localhost:7700\")")
+	fmt.Println("  MINIDON_MEILI_KEY               MeiliSearch API key (optional)")
+	fmt.Println("  MINIDON_DISABLE_SEARCH          Disable search functionality (default: false)")
+	fmt.Println("  MINIDON_BUFFER_SIZE             Number of recent statuses to keep in the ring buffer (default: 500)")
+}
+
 func main() {
+	// Parse custom help flags first
+	for _, arg := range os.Args[1:] {
+		if arg == "-h" || arg == "--help" {
+			printHelp()
+			os.Exit(0)
+		}
+	}
+
 	mode := flag.String("mode", "web", "execution mode (web or cli)")
 	format := flag.String("format", "json", "output format for cli mode (json or text)")
+	disableSearch := flag.Bool("disable-search", false, "disable search functionality")
 	flag.Parse()
 
 	if *mode != "web" && *mode != "cli" {
@@ -41,6 +75,9 @@ func main() {
 	}
 
 	cfg := config.Load()
+	if *disableSearch {
+		cfg.DisableSearch = true
+	}
 
 	var logWriter io.Writer = os.Stdout
 	if *mode == "cli" {
@@ -49,6 +86,10 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
+
+	// Set up main application context
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
 
 	if *mode == "cli" {
 		if err := cfg.Validate(); err != nil {
@@ -80,7 +121,6 @@ func main() {
 		slog.Info("starting stream client CLI mode", "format", *format)
 
 		statuses := mClient.Statuses()
-		slog.Info("got statuses")
 		for {
 			select {
 			case <-ctx.Done():
@@ -110,23 +150,26 @@ func main() {
 	// 2. Initialize Search Backend (MeiliSearch or Noop Index)
 	var idx index.Index
 	var err error
-	if cfg.MeiliURL != "" {
-		idx, err = index.NewMeiliIndex(cfg.MeiliURL, cfg.MeiliKey)
-		if err != nil {
-			slog.Error("failed to connect to MeiliSearch; falling back to Noop search index", "err", err)
-			idx = &index.NoopIndex{}
-		} else {
-			slog.Info("connected to MeiliSearch backend", "url", cfg.MeiliURL)
-		}
+	if cfg.DisableSearch {
+		slog.Info("Search functionality disabled; using Noop search index")
+		idx = &index.NoopIndex{}
+	} else if cfg.MeiliURL != "" {
+		idx = index.NewMeiliIndex(cfg.MeiliURL, cfg.MeiliKey)
+		slog.Info("connected to MeiliSearch backend", "url", cfg.MeiliURL)
 	} else {
 		slog.Info("MeiliSearch not configured; using Noop search index")
 		idx = &index.NoopIndex{}
 	}
 
+	// Ensure Settings
+	if err := idx.EnsureSettings(appCtx); err != nil {
+		slog.Warn("failed to ensure search index settings", "err", err)
+	}
+
 	// 3. Initialize Mastodon Client (or Fake Client in Dev mode)
-	var client mastodon.Client
+	var mClient mastodon.Client
 	if cfg.MastodonInstance != "" && cfg.MastodonAccessToken != "" {
-		client, err = mastodon.New(mastodon.Config{
+		mClient, err = mastodon.New(mastodon.Config{
 			Server:       cfg.MastodonInstance,
 			ClientID:     cfg.MastodonClientID,
 			ClientSecret: cfg.MastodonClientSecret,
@@ -135,28 +178,54 @@ func main() {
 		})
 		if err != nil {
 			slog.Error("failed to create Mastodon client; falling back to fake client", "err", err)
-			client = mastodon.NewFakeClient()
-		} else {
-			slog.Info("created Mastodon client", "instance", cfg.MastodonInstance)
+			mClient = mastodon.NewFakeClient()
 		}
 	} else {
-		slog.Warn("Mastodon credentials missing; starting with fake/dev client")
-		client = mastodon.NewFakeClient()
+		slog.Warn("MINIDON_MASTODON_INSTANCE or ACCESS_TOKEN not set or invalid. Falling back to FakeClient.")
+		fake := mastodon.NewFakeClient()
+		mClient = fake
+
+		// Seed fake statuses periodically to facilitate developer manual verification without real tokens
+		go func() {
+			ticker := time.NewTicker(3 * time.Second)
+			defer ticker.Stop()
+			id := 0
+			for {
+				select {
+				case <-appCtx.Done():
+					return
+				case <-ticker.C:
+					id++
+					fake.Send(&model.Status{
+						ID:        fmt.Sprintf("fake-%d", id),
+						Content:   fmt.Sprintf("<p>This is a simulated status message #%d for developer preview.</p>", id),
+						CreatedAt: time.Now(),
+						Account: model.Account{
+							Acct:        "developer@localhost",
+							DisplayName: "Dev Preview",
+							Avatar:      "https://robohash.org/minidon",
+						},
+						Language: "en",
+					})
+				}
+			}
+		}()
 	}
 
-	// 4. Initialize and Start Ingest Pipeline
-	pipeline := ingest.NewPipeline(client, buf, idx)
-	runCtx, runCancel := context.WithCancel(context.Background())
-	defer runCancel()
+	// 4. Initialize Ingest Pipeline
+	pipeline := ingest.New(mClient.Statuses(), buf, idx)
 
-	if err := pipeline.Start(runCtx); err != nil {
-		slog.Error("failed to start ingest pipeline", "err", err)
+	// Start pipeline loop
+	go pipeline.Start(appCtx)
+
+	// Start mastodon stream connection
+	if err := mClient.Connect(appCtx); err != nil {
+		slog.Error("failed to connect mastodon stream", "err", err)
 		os.Exit(1)
 	}
-	slog.Info("ingest pipeline started successfully")
 
-	// 5. Build Router & Serve
-	mux := api.NewRouter(minidon.StaticFS, pipeline, buf, idx)
+	// 5. Build router and mount API/static Handlers
+	mux := api.NewRouter(minidon.StaticFS, buf, idx, pipeline, mClient)
 
 	srv := &http.Server{
 		Addr:         cfg.Listen,
@@ -174,20 +243,27 @@ func main() {
 		}
 	}()
 
+	// Wait for termination signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
-	slog.Info("shutting down", "signal", sig)
+	slog.Info("shutting down HTTP server", "signal", sig)
 
-	// Stop the ingest pipeline and clean up goroutines
-	runCancel()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
+	// 1. Gracefully stop HTTP server first (stops handling new requests, closes active SSE streams)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown error", "err", err)
-		os.Exit(1)
+	}
+
+	// 2. Cancel app context (stops ingest pipeline and background tickers)
+	slog.Info("stopping ingest pipeline")
+	appCancel()
+
+	// 3. Close Mastodon client
+	slog.Info("closing mastodon client")
+	if err := mClient.Close(); err != nil {
+		slog.Error("client close error", "err", err)
 	}
 
 	slog.Info("server stopped")

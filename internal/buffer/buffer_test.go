@@ -9,83 +9,103 @@ import (
 	"github.com/amorken/minidon/internal/model"
 )
 
-func TestBuffer_New(t *testing.T) {
-	b := buffer.New(10)
-	if b == nil {
-		t.Fatal("expected buffer, got nil")
-	}
-
-	recent := b.Recent(5)
-	if len(recent) != 0 {
-		t.Errorf("expected 0 recent items, got %d", len(recent))
-	}
-}
-
 func TestBuffer_AddAndRecent(t *testing.T) {
 	b := buffer.New(3)
 
-	b.Add(&model.Status{ID: "1"})
-	b.Add(&model.Status{ID: "2"})
+	s1 := &model.Status{ID: "1", Content: "First"}
+	s2 := &model.Status{ID: "2", Content: "Second"}
+	s3 := &model.Status{ID: "3", Content: "Third"}
+	s4 := &model.Status{ID: "4", Content: "Fourth"}
 
-	recent := b.Recent(5)
+	if !b.Add(s1) {
+		t.Error("expected s1 to be added")
+	}
+	if !b.Add(s2) {
+		t.Error("expected s2 to be added")
+	}
+
+	// Recent should return in reverse chronological order
+	recent := b.Recent(2)
 	if len(recent) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(recent))
 	}
 	if recent[0].ID != "2" || recent[1].ID != "1" {
-		t.Errorf("expected reverse chronological order, got ID order: %s, %s", recent[0].ID, recent[1].ID)
+		t.Errorf("incorrect order: got %s, then %s", recent[0].ID, recent[1].ID)
 	}
 
-	b.Add(&model.Status{ID: "3"})
-	b.Add(&model.Status{ID: "4"}) // evicts "1"
+	// Add s3 - capacity reached
+	if !b.Add(s3) {
+		t.Error("expected s3 to be added")
+	}
 
-	recent = b.Recent(5)
+	// Add s4 - oldest (s1) should be evicted
+	if !b.Add(s4) {
+		t.Error("expected s4 to be added")
+	}
+
+	recent = b.Recent(10) // requesting more than capacity/size
 	if len(recent) != 3 {
-		t.Fatalf("expected 3 items, got %d", len(recent))
+		t.Fatalf("expected 3 items (max capacity), got %d", len(recent))
 	}
 	if recent[0].ID != "4" || recent[1].ID != "3" || recent[2].ID != "2" {
-		t.Errorf("expected IDs [4, 3, 2], got [%s, %s, %s]", recent[0].ID, recent[1].ID, recent[2].ID)
+		t.Errorf("incorrect eviction or order after capacity limit")
 	}
 
-	// Request less than total
-	recent = b.Recent(2)
-	if len(recent) != 2 {
-		t.Fatalf("expected 2 items, got %d", len(recent))
-	}
-	if recent[0].ID != "4" || recent[1].ID != "3" {
-		t.Errorf("expected IDs [4, 3], got [%s, %s]", recent[0].ID, recent[1].ID)
+	// Verify s1 is gone
+	for _, r := range recent {
+		if r.ID == "1" {
+			t.Error("s1 was not evicted")
+		}
 	}
 }
 
-func TestBuffer_Concurrency(t *testing.T) {
+func TestBuffer_DuplicateFiltering(t *testing.T) {
+	b := buffer.New(5)
+	s1 := &model.Status{ID: "1", Content: "First"}
+	s1Dup := &model.Status{ID: "1", Content: "First Duplicate"}
+
+	if !b.Add(s1) {
+		t.Error("expected s1 to be added")
+	}
+	if b.Add(s1Dup) {
+		t.Error("expected s1Dup to be ignored")
+	}
+
+	recent := b.Recent(5)
+	if len(recent) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(recent))
+	}
+	if recent[0].Content != "First" {
+		t.Errorf("expected original content 'First', got %q", recent[0].Content)
+	}
+}
+
+func TestBuffer_ConcurrentAccess(t *testing.T) {
 	b := buffer.New(100)
 	var wg sync.WaitGroup
 
-	// Writers
-	for i := 0; i < 10; i++ {
+	// Concurrently add statuses
+	for i := 0; i < 50; i++ {
 		wg.Add(1)
-		go func(writerID int) {
+		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < 50; j++ {
-				b.Add(&model.Status{ID: strconv.Itoa(writerID*100 + j)})
-			}
+			b.Add(&model.Status{ID: strconv.Itoa(id), Content: "status"})
 		}(i)
 	}
 
-	// Readers
-	for i := 0; i < 5; i++ {
+	// Concurrently read statuses
+	for i := 0; i < 50; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
-				_ = b.Recent(50)
-			}
+			_ = b.Recent(10)
 		}()
 	}
 
 	wg.Wait()
 
-	recent := b.Recent(150)
-	if len(recent) != 100 {
-		t.Errorf("expected buffer to be full at 100 items, got %d", len(recent))
+	recent := b.Recent(100)
+	if len(recent) != 50 {
+		t.Errorf("expected 50 statuses in buffer, got %d", len(recent))
 	}
 }

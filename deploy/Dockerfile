@@ -22,7 +22,7 @@ RUN npm run build
 # Produces /src/web/dist
 
 # ── Stage 2: Go build ─────────────────────────────────────────────────────────
-FROM golang:1.22-alpine AS go-builder
+FROM golang:1.26-alpine AS go-builder
 
 WORKDIR /src
 

@@ -9,9 +9,9 @@ import (
 )
 
 type FakeClient struct {
+	mu        sync.Mutex
 	statuses  chan *model.Status
-	closed    atomic.Bool
-	once      sync.Once
+	closed    bool
 	connected atomic.Bool
 }
 
@@ -31,13 +31,19 @@ func (f *FakeClient) Statuses() <-chan *model.Status {
 }
 
 func (f *FakeClient) Close() error {
-	f.closed.Store(true)
-	f.once.Do(func() { close(f.statuses) })
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.closed {
+		f.closed = true
+		close(f.statuses)
+	}
 	return nil
 }
 
 func (f *FakeClient) Send(s *model.Status) bool {
-	if f.closed.Load() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed {
 		return false
 	}
 	select {
@@ -48,14 +54,16 @@ func (f *FakeClient) Send(s *model.Status) bool {
 	}
 }
 
+func (f *FakeClient) IsConnected() bool {
+	return f.connected.Load()
+}
+
 func (f *FakeClient) Connected() bool {
 	return f.IsConnected()
 }
 
-func (f *FakeClient) IsConnected() bool {
-	return f.connected.Load() && !f.closed.Load()
-}
-
 func (f *FakeClient) IsClosed() bool {
-	return f.closed.Load()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.closed
 }

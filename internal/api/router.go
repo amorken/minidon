@@ -7,10 +7,19 @@ import (
 	"github.com/amorken/minidon/internal/buffer"
 	"github.com/amorken/minidon/internal/index"
 	"github.com/amorken/minidon/internal/ingest"
+	"github.com/amorken/minidon/internal/mastodon"
 	"github.com/amorken/minidon/internal/static"
 )
 
-func NewRouter(staticFS fs.FS, pipeline *ingest.Pipeline, buf *buffer.Buffer, idx index.Index) *http.ServeMux {
+// NewRouter constructs a serve multiplexer registering all API routes, static handlers,
+// and health/readiness checks.
+func NewRouter(
+	staticFS fs.FS,
+	buf *buffer.Buffer,
+	idx index.Index,
+	pipeline *ingest.Pipeline,
+	mClient mastodon.Client,
+) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/timeline", timelineHandler(buf))
@@ -22,10 +31,12 @@ func NewRouter(staticFS fs.FS, pipeline *ingest.Pipeline, buf *buffer.Buffer, id
 	})
 
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if pipeline != nil && pipeline.Connected() {
+		if mClient != nil && mClient.IsConnected() {
 			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ready"))
 		} else {
-			http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not connected to mastodon"))
 		}
 	})
 
