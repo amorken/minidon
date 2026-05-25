@@ -31,13 +31,13 @@ func NewRouter(
 	})
 
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if mClient != nil && mClient.IsConnected() {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("ready"))
-		} else {
+		if mClient == nil || !mClient.IsConnected() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("not connected to mastodon"))
+			return
 		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready"))
 	})
 
 	spaHandler := static.NewHandler(staticFS)
