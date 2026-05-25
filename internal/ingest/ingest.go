@@ -64,7 +64,7 @@ func (p *Pipeline) Start(ctx context.Context) {
 		} else {
 			slog.Debug("ingest pipeline indexed batch", "count", len(batch))
 		}
-		batch = make([]model.Status, 0, maxBatchSize)
+		batch = batch[:0]
 	}
 
 	for {
