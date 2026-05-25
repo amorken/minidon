@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/meilisearch/meilisearch-go"
@@ -14,26 +15,80 @@ import (
 )
 
 type meiliIndex struct {
-	client meilisearch.ServiceManager
-	index  meilisearch.IndexManager
+	url       string
+	masterKey string
+
+	mu       sync.Mutex
+	client   meilisearch.ServiceManager
+	index    meilisearch.IndexManager
+	resolved bool
 }
 
 // NewMeiliIndex constructs a new MeiliSearch Index implementation.
 func NewMeiliIndex(url, apiKey string) Index {
+	return &meiliIndex{
+		url:       url,
+		masterKey: apiKey,
+	}
+}
+
+func (m *meiliIndex) initialize(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.resolved {
+		return nil
+	}
+
 	hc := &http.Client{
 		Timeout: 5 * time.Second,
 	}
-	client := meilisearch.New(url, meilisearch.WithAPIKey(apiKey), meilisearch.WithCustomClient(hc))
-	return &meiliIndex{
-		client: client,
-		index:  client.Index("statuses"),
+
+	// If no master key is configured, run in dev mode without resolving an admin key.
+	if m.masterKey == "" {
+		slog.Info("meili: no master key provided, using direct client connection")
+		client := meilisearch.New(m.url, meilisearch.WithCustomClient(hc))
+		m.client = client
+		m.index = client.Index("statuses")
+		m.resolved = true
+		return nil
 	}
+
+	slog.Info("meili: resolving Default Admin API Key using master key")
+	masterClient := meilisearch.New(m.url, meilisearch.WithAPIKey(m.masterKey), meilisearch.WithCustomClient(hc))
+
+	keysResults, err := masterClient.GetKeysWithContext(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve keys using master key: %w", err)
+	}
+
+	var adminKey string
+	for _, k := range keysResults.Results {
+		if k.Name == "Default Admin API Key" {
+			adminKey = k.Key
+			break
+		}
+	}
+
+	if adminKey == "" {
+		return fmt.Errorf("Default Admin API Key not found in Meilisearch response")
+	}
+
+	slog.Info("meili: successfully retrieved Default Admin API Key")
+	client := meilisearch.New(m.url, meilisearch.WithAPIKey(adminKey), meilisearch.WithCustomClient(hc))
+	m.client = client
+	m.index = client.Index("statuses")
+	m.resolved = true
+	return nil
 }
 
 // Index queues a batch of statuses to be added to MeiliSearch.
 func (m *meiliIndex) Index(statuses []model.Status) error {
 	if len(statuses) == 0 {
 		return nil
+	}
+	if err := m.initialize(context.Background()); err != nil {
+		return fmt.Errorf("meili: failed to initialize client: %w", err)
 	}
 	_, err := m.index.AddDocuments(statuses, nil)
 	if err != nil {
@@ -44,6 +99,9 @@ func (m *meiliIndex) Index(statuses []model.Status) error {
 
 // Search queries MeiliSearch for statuses matching the query and search options.
 func (m *meiliIndex) Search(ctx context.Context, query string, opts SearchOptions) (SearchResult, error) {
+	if err := m.initialize(ctx); err != nil {
+		return SearchResult{}, fmt.Errorf("meili: failed to initialize client: %w", err)
+	}
 	req := &meilisearch.SearchRequest{
 		Limit:  int64(opts.Limit),
 		Offset: int64(opts.Offset),
@@ -72,6 +130,9 @@ func (m *meiliIndex) Search(ctx context.Context, query string, opts SearchOption
 }
 
 func (m *meiliIndex) applySettings(ctx context.Context) error {
+	if err := m.initialize(ctx); err != nil {
+		return fmt.Errorf("meili: failed to initialize client: %w", err)
+	}
 	attemptCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 

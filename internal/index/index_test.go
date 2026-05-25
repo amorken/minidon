@@ -2,6 +2,8 @@ package index_test
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/amorken/minidon/internal/index"
@@ -35,3 +37,70 @@ func TestNoopIndex(t *testing.T) {
 		t.Errorf("expected limit 10, got %d", res.Limit)
 	}
 }
+
+func TestMeiliIndex_Initialize(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer master-key-123" && auth != "Bearer admin-key-xyz" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		if r.URL.Path == "/keys" && r.Method == "GET" {
+			if auth != "Bearer master-key-123" {
+				http.Error(w, "Forbidden - keys endpoint requires master key", http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"results": [
+					{
+						"name": "Default Search API Key",
+						"key": "search-key-abc"
+					},
+					{
+						"name": "Default Admin API Key",
+						"key": "admin-key-xyz"
+					}
+				]
+			}`))
+			return
+		}
+
+		// Subsequent operations should use the admin-key-xyz
+		if r.URL.Path == "/indexes/statuses/settings" {
+			if auth != "Bearer admin-key-xyz" {
+				http.Error(w, "Forbidden - settings endpoint requires admin API key", http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"taskUid": 1}`))
+			return
+		}
+
+		// UpdateSearchableAttributes, UpdateSortableAttributes, UpdateFilterableAttributes
+		// all map to "/indexes/statuses/settings/searchable", "/indexes/statuses/settings/sortable", etc.
+		if r.Method == "PUT" || r.Method == "POST" || r.Method == "DELETE" {
+			if auth != "Bearer admin-key-xyz" {
+				http.Error(w, "Forbidden - modifying operations require admin API key", http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"taskUid": 1}`))
+			return
+		}
+
+		http.Error(w, "Not Found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	idx := index.NewMeiliIndex(server.URL, "master-key-123")
+
+	err := idx.EnsureSettings(context.Background())
+	if err != nil {
+		t.Fatalf("EnsureSettings failed: %v", err)
+	}
+}
+
