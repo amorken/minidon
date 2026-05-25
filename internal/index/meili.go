@@ -216,11 +216,13 @@ func (m *meiliIndex) GetSinceID(ctx context.Context) (string, error) {
 		var meiliErr *meilisearch.Error
 		if errors.As(err, &meiliErr) {
 			if meiliErr.StatusCode == http.StatusNotFound || meiliErr.MeilisearchApiError.Code == "document_not_found" || meiliErr.MeilisearchApiError.Code == "index_not_found" {
+				slog.Debug("meili: no existing since_id found in index")
 				return "", nil
 			}
 		}
 		return "", fmt.Errorf("meili: failed to get since_id state: %w", err)
 	}
+	slog.Debug("meili: retrieved since_id from index", "since_id", state.SinceID)
 	return state.SinceID, nil
 }
 
@@ -229,6 +231,7 @@ func (m *meiliIndex) SaveSinceID(ctx context.Context, sinceID string) error {
 		return fmt.Errorf("meili: failed to initialize client: %w", err)
 	}
 
+	slog.Debug("meili: saving since_id to index", "since_id", sinceID)
 	state := []SinceIDState{
 		{
 			ID:      "pagination",
