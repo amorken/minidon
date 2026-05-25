@@ -1,3 +1,5 @@
+// Package index defines the interface and setup utilities for indexing and searching
+// Mastodon statuses, supporting multiple backends.
 package index
 
 import (

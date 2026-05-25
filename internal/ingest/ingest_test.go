@@ -103,7 +103,7 @@ func TestPipeline_BatchFlush(t *testing.T) {
 	go p.Start(ctx)
 
 	// Send 101 statuses (should trigger immediate flush at 100)
-	for i := 0; i < 101; i++ {
+	for i := range 101 {
 		src <- &model.Status{ID: strconv.Itoa(i), Content: "status"}
 	}
 

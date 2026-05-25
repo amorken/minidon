@@ -1,3 +1,5 @@
+// Package buffer implements a thread-safe, bounded, in-memory ring buffer
+// for caching recent Mastodon status updates.
 package buffer
 
 import (

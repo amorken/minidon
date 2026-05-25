@@ -1,3 +1,5 @@
+// Package api provides HTTP request handlers and routers to expose API endpoints
+// and stream updates to the frontend client.
 package api
 
 import (

@@ -1,3 +1,5 @@
+// Package static handles serving the compiled single-page application and other
+// static assets from an embedded filesystem.
 package static
 
 import (

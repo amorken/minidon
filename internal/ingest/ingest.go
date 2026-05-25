@@ -1,3 +1,5 @@
+// Package ingest implements the fan-out ingestion pipeline consuming real-time events
+// from the Mastodon client and broadcasting them to internal storage and subscribers.
 package ingest
 
 import (

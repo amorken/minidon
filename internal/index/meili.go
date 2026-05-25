@@ -158,7 +158,7 @@ func (m *meiliIndex) applySettings(ctx context.Context) error {
 // If MeiliSearch is starting up, it retries with a backoff.
 func (m *meiliIndex) EnsureSettings(ctx context.Context) error {
 	var err error
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

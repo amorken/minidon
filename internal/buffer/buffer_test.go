@@ -85,7 +85,7 @@ func TestBuffer_ConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Concurrently add statuses
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -94,7 +94,7 @@ func TestBuffer_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Concurrently read statuses
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
