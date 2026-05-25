@@ -191,3 +191,65 @@ func TestPipeline_EditAndDelete(t *testing.T) {
 		t.Errorf("expected test-id to be deleted from index, got deleted count %d, deleted ID %q", deletedCount, deletedId)
 	}
 }
+
+func TestPipeline_SinceIDPersistence(t *testing.T) {
+	// 1. Initial backfill without sinceId
+	src := make(chan *model.Event, 10)
+	buf := buffer.New(10)
+	idx := &mockIndex{} // starts with empty sinceID
+
+	p := ingest.New(src, buf, idx)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Send status events
+	src <- &model.Event{Type: model.EventTypeStatus, Status: &model.Status{ID: "10", Content: "Status 10"}}
+	src <- &model.Event{Type: model.EventTypeStatus, Status: &model.Status{ID: "12", Content: "Status 12"}}
+	src <- &model.Event{Type: model.EventTypeStatus, Status: &model.Status{ID: "11", Content: "Status 11"}}
+
+	// Start pipeline
+	go p.Start(ctx)
+
+	// Wait briefly for processing, then cancel to flush
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	// Wait for pipeline to finish
+	time.Sleep(100 * time.Millisecond)
+
+	idx.mu.Lock()
+	savedSinceID := idx.sinceID
+	idx.mu.Unlock()
+
+	if savedSinceID != "12" {
+		t.Errorf("expected since_id to be '12', got %q", savedSinceID)
+	}
+
+	// 2. Subsequent backfill / updates
+	src2 := make(chan *model.Event, 10)
+	buf2 := buffer.New(10)
+	idx2 := &mockIndex{sinceID: "12"} // starts with loaded sinceID
+
+	p2 := ingest.New(src2, buf2, idx2)
+	ctx2, cancel2 := context.WithCancel(context.Background())
+
+	// Send a newer status
+	src2 <- &model.Event{Type: model.EventTypeStatus, Status: &model.Status{ID: "15", Content: "Status 15"}}
+
+	// Start pipeline
+	go p2.Start(ctx2)
+
+	// Wait briefly for processing, then cancel to flush
+	time.Sleep(100 * time.Millisecond)
+	cancel2()
+
+	// Wait for pipeline to finish
+	time.Sleep(100 * time.Millisecond)
+
+	idx2.mu.Lock()
+	savedSinceID2 := idx2.sinceID
+	idx2.mu.Unlock()
+
+	if savedSinceID2 != "15" {
+		t.Errorf("expected since_id to update to '15', got %q", savedSinceID2)
+	}
+}
