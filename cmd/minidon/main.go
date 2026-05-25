@@ -104,7 +104,6 @@ func main() {
 
 	// 2. Initialize Search Backend (MeiliSearch or Noop Index)
 	idx := index.NewFromConfig(cfg.DisableSearch, cfg.MeiliURL, cfg.MeiliKey)
-	var err error
 
 	// Ensure Settings
 	if err := idx.EnsureSettings(appCtx); err != nil {
@@ -114,6 +113,7 @@ func main() {
 	// 3. Initialize Mastodon Client (or Fake Client in Dev mode)
 	var mClient mastodon.Client
 	if cfg.MastodonInstance != "" && cfg.MastodonAccessToken != "" {
+		var err error
 		mClient, err = mastodon.New(mastodon.Config{
 			Server:       cfg.MastodonInstance,
 			ClientID:     cfg.MastodonClientID,
