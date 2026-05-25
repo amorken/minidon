@@ -61,9 +61,10 @@ func (p *Pipeline) Start(ctx context.Context) {
 		}
 		if err := p.idx.Index(batch); err != nil {
 			slog.Error("ingest pipeline failed to index batch", "err", err)
-		} else {
-			slog.Debug("ingest pipeline indexed batch", "count", len(batch))
+			batch = batch[:0]
+			return
 		}
+		slog.Debug("ingest pipeline indexed batch", "count", len(batch))
 		batch = batch[:0]
 	}
 
