@@ -58,10 +58,6 @@ func (f *FakeClient) IsConnected() bool {
 	return f.connected.Load()
 }
 
-func (f *FakeClient) Connected() bool {
-	return f.IsConnected()
-}
-
 func (f *FakeClient) IsClosed() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()

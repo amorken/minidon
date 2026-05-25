@@ -17,7 +17,6 @@ import (
 type Client interface {
 	Connect(ctx context.Context) error
 	Statuses() <-chan *model.Status
-	Connected() bool
 	IsConnected() bool
 	Close() error
 }
@@ -62,10 +61,6 @@ type mastodonClient struct {
 	done        chan struct{}
 	closeOnce   sync.Once
 	isConnected atomic.Bool
-}
-
-func (m *mastodonClient) Connected() bool {
-	return m.isConnected.Load()
 }
 
 func (m *mastodonClient) IsConnected() bool {
