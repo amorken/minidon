@@ -35,6 +35,7 @@ type SearchResult struct {
 
 type Index interface {
 	Index(statuses []model.Status) error
+	Delete(ctx context.Context, id string) error
 	Search(ctx context.Context, query string, opts SearchOptions) (SearchResult, error)
 	EnsureSettings(ctx context.Context) error
 }
@@ -42,6 +43,10 @@ type Index interface {
 type NoopIndex struct{}
 
 func (n *NoopIndex) Index(statuses []model.Status) error {
+	return nil
+}
+
+func (n *NoopIndex) Delete(ctx context.Context, id string) error {
 	return nil
 }
 

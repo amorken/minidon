@@ -80,19 +80,29 @@ func main() {
 
 		slog.Info("starting stream client CLI mode", "format", cfg.Cli.Format)
 
-		statuses := mClient.Statuses()
+		events := mClient.Events()
 		for {
 			select {
 			case <-ctx.Done():
 				slog.Info("stopping stream client")
 				return
-			case status, ok := <-statuses:
+			case ev, ok := <-events:
 				if !ok {
 					slog.Info("stream channel closed")
 					return
 				}
-				if err := printStatus(status, cfg.Cli.Format); err != nil {
-					slog.Error("failed to print status", "err", err)
+				switch ev.Type {
+				case model.EventTypeStatus:
+					if err := printStatus(ev.Status, cfg.Cli.Format); err != nil {
+						slog.Error("failed to print status", "err", err)
+					}
+				case model.EventTypeStatusEdit:
+					slog.Info("received status edit", "id", ev.Status.ID)
+					if err := printStatus(ev.Status, cfg.Cli.Format); err != nil {
+						slog.Error("failed to print status", "err", err)
+					}
+				case model.EventTypeStatusDelete:
+					slog.Info("received status delete", "id", ev.StatusID)
 				}
 			}
 		}
@@ -163,7 +173,7 @@ func main() {
 	}
 
 	// 4. Initialize Ingest Pipeline
-	pipeline := ingest.New(mClient.Statuses(), buf, idx)
+	pipeline := ingest.New(mClient.Events(), buf, idx)
 
 	// Start pipeline loop
 	go pipeline.Start(appCtx)

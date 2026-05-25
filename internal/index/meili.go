@@ -97,6 +97,18 @@ func (m *meiliIndex) Index(statuses []model.Status) error {
 	return nil
 }
 
+// Delete removes a status from MeiliSearch index by ID.
+func (m *meiliIndex) Delete(ctx context.Context, id string) error {
+	if err := m.initialize(ctx); err != nil {
+		return fmt.Errorf("meili: failed to initialize client: %w", err)
+	}
+	_, err := m.index.DeleteDocumentWithContext(ctx, id, nil)
+	if err != nil {
+		return fmt.Errorf("meili: failed to delete document: %w", err)
+	}
+	return nil
+}
+
 // Search queries MeiliSearch for statuses matching the query and search options.
 func (m *meiliIndex) Search(ctx context.Context, query string, opts SearchOptions) (SearchResult, error) {
 	if err := m.initialize(ctx); err != nil {

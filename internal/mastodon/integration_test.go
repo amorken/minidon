@@ -11,6 +11,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	mstdn "github.com/mattn/go-mastodon"
+
+	"github.com/amorken/minidon/internal/model"
 )
 
 func TestMastodonClientIntegration(t *testing.T) {
@@ -110,12 +112,15 @@ func TestMastodonClientIntegration(t *testing.T) {
 	}
 	defer client.Close()
 
-	// Verify the client is receiving backfill statuses
-	statusesChan := client.Statuses()
+	// Verify the client is receiving backfill statuses as events
+	eventsChan := client.Events()
 	select {
-	case status := <-statusesChan:
-		if status.ID != "backfill-1" {
-			t.Errorf("expected backfill status ID to be 'backfill-1', got %q", status.ID)
+	case ev := <-eventsChan:
+		if ev.Type != model.EventTypeStatus {
+			t.Errorf("expected event type 'status', got %q", ev.Type)
+		}
+		if ev.Status.ID != "backfill-1" {
+			t.Errorf("expected backfill status ID to be 'backfill-1', got %q", ev.Status.ID)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for backfill status")
@@ -165,14 +170,76 @@ func TestMastodonClientIntegration(t *testing.T) {
 	}
 	mu.Unlock()
 
-	// Verify WebSocket status is received
+	// Verify WebSocket status is received as a status event
 	select {
-	case status := <-statusesChan:
-		if status.ID != "live-1" {
-			t.Errorf("expected live status ID to be 'live-1', got %q", status.ID)
+	case ev := <-eventsChan:
+		if ev.Type != model.EventTypeStatus {
+			t.Errorf("expected event type 'status', got %q", ev.Type)
+		}
+		if ev.Status.ID != "live-1" {
+			t.Errorf("expected live status ID to be 'live-1', got %q", ev.Status.ID)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for live status")
+	}
+
+	// Test status.update (UpdateEditEvent)
+	editStatus := &mstdn.Status{
+		ID:        "live-1",
+		URI:       "uri:live-1",
+		Content:   "live stream status edited",
+		CreatedAt: time.Now(),
+		Account: mstdn.Account{
+			Acct:        "live-user",
+			DisplayName: "Liver",
+		},
+	}
+	editStatusJSON, _ := json.Marshal(editStatus)
+	editEvent := StreamEvent{
+		Event:   "status.update",
+		Payload: string(editStatusJSON),
+	}
+
+	mu.Lock()
+	for conn := range websocketConns {
+		_ = conn.WriteJSON(editEvent)
+	}
+	mu.Unlock()
+
+	select {
+	case ev := <-eventsChan:
+		if ev.Type != model.EventTypeStatusEdit {
+			t.Errorf("expected event type 'status_edit', got %q", ev.Type)
+		}
+		if ev.Status.ID != "live-1" || ev.Status.Content != "live stream status edited" {
+			t.Errorf("unexpected edit event details: %+v", ev.Status)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for status edit event")
+	}
+
+	// Test delete event (DeleteEvent)
+	deleteEvent := StreamEvent{
+		Event:   "delete",
+		Payload: "live-1",
+	}
+
+	mu.Lock()
+	for conn := range websocketConns {
+		_ = conn.WriteJSON(deleteEvent)
+	}
+	mu.Unlock()
+
+	select {
+	case ev := <-eventsChan:
+		if ev.Type != model.EventTypeStatusDelete {
+			t.Errorf("expected event type 'status_delete', got %q", ev.Type)
+		}
+		if ev.StatusID != "live-1" {
+			t.Errorf("expected status ID 'live-1' to be deleted, got %q", ev.StatusID)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for status delete event")
 	}
 
 	// Test reconnection behavior
@@ -237,8 +304,8 @@ func TestMastodonClientIntegration(t *testing.T) {
 	timeout := time.After(3 * time.Second)
 	for !foundReconnectStatus {
 		select {
-		case status := <-statusesChan:
-			if status.ID == "reconnect-1" {
+		case ev := <-eventsChan:
+			if ev.Type == model.EventTypeStatus && ev.Status.ID == "reconnect-1" {
 				foundReconnectStatus = true
 			}
 		case <-timeout:

@@ -16,12 +16,20 @@ import (
 type mockIndex struct {
 	mu      sync.Mutex
 	indexed []model.Status
+	deleted []string
 }
 
 func (m *mockIndex) Index(statuses []model.Status) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.indexed = append(m.indexed, statuses...)
+	return nil
+}
+
+func (m *mockIndex) Delete(ctx context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.deleted = append(m.deleted, id)
 	return nil
 }
 
@@ -34,7 +42,7 @@ func (m *mockIndex) EnsureSettings(ctx context.Context) error {
 }
 
 func TestPipeline_Start(t *testing.T) {
-	src := make(chan *model.Status, 10)
+	src := make(chan *model.Event, 10)
 	buf := buffer.New(5)
 	idx := &mockIndex{}
 	p := ingest.New(src, buf, idx)
@@ -47,7 +55,7 @@ func TestPipeline_Start(t *testing.T) {
 	subCh := p.Subscribe()
 
 	status := &model.Status{ID: "1", Content: "Hello"}
-	src <- status
+	src <- &model.Event{Type: model.EventTypeStatus, Status: status}
 
 	// Check subscriber received the status
 	select {
@@ -69,7 +77,7 @@ func TestPipeline_Start(t *testing.T) {
 	p.Unsubscribe(subCh)
 
 	// Sending another status
-	src <- &model.Status{ID: "2", Content: "World"}
+	src <- &model.Event{Type: model.EventTypeStatus, Status: &model.Status{ID: "2", Content: "World"}}
 
 	// Subscriber should NOT receive it because they unsubscribed
 	select {
@@ -92,7 +100,7 @@ func TestPipeline_Start(t *testing.T) {
 }
 
 func TestPipeline_BatchFlush(t *testing.T) {
-	src := make(chan *model.Status, 150)
+	src := make(chan *model.Event, 150)
 	buf := buffer.New(200)
 	idx := &mockIndex{}
 	p := ingest.New(src, buf, idx)
@@ -104,7 +112,7 @@ func TestPipeline_BatchFlush(t *testing.T) {
 
 	// Send 101 statuses (should trigger immediate flush at 100)
 	for i := 0; i < 101; i++ {
-		src <- &model.Status{ID: strconv.Itoa(i), Content: "status"}
+		src <- &model.Event{Type: model.EventTypeStatus, Status: &model.Status{ID: strconv.Itoa(i), Content: "status"}}
 	}
 
 	// Wait a small bit for processing
@@ -116,5 +124,56 @@ func TestPipeline_BatchFlush(t *testing.T) {
 
 	if indexedCount < 100 {
 		t.Errorf("expected at least 100 items indexed immediately, got %d", indexedCount)
+	}
+}
+
+func TestPipeline_EditAndDelete(t *testing.T) {
+	src := make(chan *model.Event, 10)
+	buf := buffer.New(5)
+	idx := &mockIndex{}
+	p := ingest.New(src, buf, idx)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go p.Start(ctx)
+
+	// 1. Add status
+	src <- &model.Event{Type: model.EventTypeStatus, Status: &model.Status{ID: "test-id", Content: "Original content"}}
+
+	time.Sleep(50 * time.Millisecond)
+	recent := buf.Recent(5)
+	if len(recent) != 1 || recent[0].Content != "Original content" {
+		t.Errorf("expected original status in buffer, got %v", recent)
+	}
+
+	// 2. Edit status
+	src <- &model.Event{Type: model.EventTypeStatusEdit, Status: &model.Status{ID: "test-id", Content: "Edited content"}}
+
+	time.Sleep(50 * time.Millisecond)
+	recent = buf.Recent(5)
+	if len(recent) != 1 || recent[0].Content != "Edited content" {
+		t.Errorf("expected edited status in buffer, got %v", recent)
+	}
+
+	// 3. Delete status
+	src <- &model.Event{Type: model.EventTypeStatusDelete, StatusID: "test-id"}
+
+	time.Sleep(50 * time.Millisecond)
+	recent = buf.Recent(5)
+	if len(recent) != 0 {
+		t.Errorf("expected status to be deleted from buffer, got %v", recent)
+	}
+
+	idx.mu.Lock()
+	deletedCount := len(idx.deleted)
+	deletedId := ""
+	if deletedCount > 0 {
+		deletedId = idx.deleted[0]
+	}
+	idx.mu.Unlock()
+
+	if deletedCount != 1 || deletedId != "test-id" {
+		t.Errorf("expected test-id to be deleted from index, got deleted count %d, deleted ID %q", deletedCount, deletedId)
 	}
 }

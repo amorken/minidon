@@ -10,14 +10,14 @@ import (
 
 type FakeClient struct {
 	mu        sync.Mutex
-	statuses  chan *model.Status
+	events    chan *model.Event
 	closed    bool
 	connected atomic.Bool
 }
 
 func NewFakeClient() *FakeClient {
 	return &FakeClient{
-		statuses: make(chan *model.Status, 256),
+		events: make(chan *model.Event, 256),
 	}
 }
 
@@ -26,8 +26,8 @@ func (f *FakeClient) Connect(_ context.Context) error {
 	return nil
 }
 
-func (f *FakeClient) Statuses() <-chan *model.Status {
-	return f.statuses
+func (f *FakeClient) Events() <-chan *model.Event {
+	return f.events
 }
 
 func (f *FakeClient) Close() error {
@@ -35,7 +35,7 @@ func (f *FakeClient) Close() error {
 	defer f.mu.Unlock()
 	if !f.closed {
 		f.closed = true
-		close(f.statuses)
+		close(f.events)
 	}
 	return nil
 }
@@ -46,8 +46,26 @@ func (f *FakeClient) Send(s *model.Status) bool {
 	if f.closed {
 		return false
 	}
+	ev := &model.Event{
+		Type:   model.EventTypeStatus,
+		Status: s,
+	}
 	select {
-	case f.statuses <- s:
+	case f.events <- ev:
+		return true
+	default:
+		return false
+	}
+}
+
+func (f *FakeClient) SendEvent(ev *model.Event) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed {
+		return false
+	}
+	select {
+	case f.events <- ev:
 		return true
 	default:
 		return false

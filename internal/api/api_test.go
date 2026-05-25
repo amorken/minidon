@@ -24,6 +24,10 @@ func (m *mockSearchIndex) Index(statuses []model.Status) error {
 	return nil
 }
 
+func (m *mockSearchIndex) Delete(ctx context.Context, id string) error {
+	return nil
+}
+
 func (m *mockSearchIndex) Search(ctx context.Context, query string, opts index.SearchOptions) (index.SearchResult, error) {
 	m.searchedQuery = query
 	m.searchOpts = opts
@@ -43,7 +47,7 @@ func TestReadyz(t *testing.T) {
 	buf := buffer.New(10)
 	idx := &mockSearchIndex{}
 	fc := mastodon.NewFakeClient()
-	pipe := ingest.New(fc.Statuses(), buf, idx)
+	pipe := ingest.New(fc.Events(), buf, idx)
 
 	mux := api.NewRouter(nil, buf, idx, pipe, fc)
 
@@ -70,7 +74,7 @@ func TestTimelineRoute(t *testing.T) {
 	buf := buffer.New(10)
 	idx := &mockSearchIndex{}
 	fc := mastodon.NewFakeClient()
-	pipe := ingest.New(fc.Statuses(), buf, idx)
+	pipe := ingest.New(fc.Events(), buf, idx)
 
 	s := &model.Status{ID: "timeline-1", Content: "Hello"}
 	buf.Add(s)
@@ -107,7 +111,7 @@ func TestSearchRoute(t *testing.T) {
 	buf := buffer.New(10)
 	idx := &mockSearchIndex{}
 	fc := mastodon.NewFakeClient()
-	pipe := ingest.New(fc.Statuses(), buf, idx)
+	pipe := ingest.New(fc.Events(), buf, idx)
 
 	mux := api.NewRouter(nil, buf, idx, pipe, fc)
 

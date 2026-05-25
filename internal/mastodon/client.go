@@ -16,7 +16,7 @@ import (
 
 type Client interface {
 	Connect(ctx context.Context) error
-	Statuses() <-chan *model.Status
+	Events() <-chan *model.Event
 	IsConnected() bool
 	Close() error
 }
@@ -48,7 +48,7 @@ func New(cfg Config) (Client, error) {
 		cfg:    cfg,
 		client: mc,
 		ws:     mc.NewWSClient(),
-		out:    make(chan *model.Status, 256),
+		out:    make(chan *model.Event, 256),
 		done:   make(chan struct{}),
 	}, nil
 }
@@ -57,7 +57,7 @@ type mastodonClient struct {
 	cfg         Config
 	client      *mstdn.Client
 	ws          *mstdn.WSClient
-	out         chan *model.Status
+	out         chan *model.Event
 	done        chan struct{}
 	closeOnce   sync.Once
 	isConnected atomic.Bool
@@ -72,7 +72,7 @@ func (m *mastodonClient) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (m *mastodonClient) Statuses() <-chan *model.Status {
+func (m *mastodonClient) Events() <-chan *model.Event {
 	return m.out
 }
 
@@ -170,7 +170,7 @@ func (m *mastodonClient) backfill(ctx context.Context) {
 			return
 		case <-m.done:
 			return
-		case m.out <- convertStatus(statuses[i]):
+		case m.out <- &model.Event{Type: model.EventTypeStatus, Status: convertStatus(statuses[i])}:
 		default:
 			slog.Warn("mastodon output channel full during backfill, dropping status", "id", statuses[i].ID)
 		}
@@ -198,9 +198,23 @@ func (m *mastodonClient) drain(ctx context.Context, events chan mstdn.Event) boo
 					needsBackfill = false
 				}
 				select {
-				case m.out <- convertStatus(e.Status):
+				case m.out <- &model.Event{Type: model.EventTypeStatus, Status: convertStatus(e.Status)}:
 				default:
 					slog.Warn("mastodon output channel full, dropping status", "id", e.Status.ID)
+				}
+			case *mstdn.UpdateEditEvent:
+				slog.Debug("received mastodon update edit event", "id", e.Status.ID)
+				select {
+				case m.out <- &model.Event{Type: model.EventTypeStatusEdit, Status: convertStatus(e.Status)}:
+				default:
+					slog.Warn("mastodon output channel full, dropping status edit", "id", e.Status.ID)
+				}
+			case *mstdn.DeleteEvent:
+				slog.Debug("received mastodon delete event", "id", e.ID)
+				select {
+				case m.out <- &model.Event{Type: model.EventTypeStatusDelete, StatusID: string(e.ID)}:
+				default:
+					slog.Warn("mastodon output channel full, dropping status delete", "id", e.ID)
 				}
 			case *mstdn.ErrorEvent:
 				slog.Error("mastodon stream error event", "err", e.Err)

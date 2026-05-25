@@ -164,12 +164,15 @@ func TestFakeClient(t *testing.T) {
 	}()
 
 	select {
-	case s := <-fc.Statuses():
-		if s.ID != "test-1" {
-			t.Errorf("got ID %q, want %q", s.ID, "test-1")
+	case ev := <-fc.Events():
+		if ev.Type != model.EventTypeStatus {
+			t.Errorf("got EventType %q, want %q", ev.Type, model.EventTypeStatus)
+		}
+		if ev.Status.ID != "test-1" {
+			t.Errorf("got ID %q, want %q", ev.Status.ID, "test-1")
 		}
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for status")
+		t.Fatal("timed out waiting for status event")
 	}
 
 	if err := fc.Close(); err != nil {

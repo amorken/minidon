@@ -64,6 +64,63 @@ func (b *Buffer) Add(s *model.Status) bool {
 	return true
 }
 
+// Update replaces the status in the buffer if it already exists. Returns true if updated.
+func (b *Buffer) Update(s *model.Status) bool {
+	if s == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if _, exists := b.ids[s.ID]; !exists {
+		return false
+	}
+
+	for i, st := range b.statuses {
+		if st.ID == s.ID {
+			b.statuses[i] = s
+			break
+		}
+	}
+
+	// Create reverse-chronological snapshot for lock-free reads
+	snap := make([]*model.Status, len(b.statuses))
+	for i, st := range b.statuses {
+		snap[len(b.statuses)-1-i] = st
+	}
+	b.snapshot.Store(&snap)
+
+	return true
+}
+
+// Delete removes the status with the given ID from the buffer. Returns true if deleted.
+func (b *Buffer) Delete(id string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if _, exists := b.ids[id]; !exists {
+		return false
+	}
+
+	delete(b.ids, id)
+
+	for i, st := range b.statuses {
+		if st.ID == id {
+			b.statuses = append(b.statuses[:i], b.statuses[i+1:]...)
+			break
+		}
+	}
+
+	// Create reverse-chronological snapshot for lock-free reads
+	snap := make([]*model.Status, len(b.statuses))
+	for i, st := range b.statuses {
+		snap[len(b.statuses)-1-i] = st
+	}
+	b.snapshot.Store(&snap)
+
+	return true
+}
+
 // Recent returns the n most-recent statuses in reverse-chronological order.
 func (b *Buffer) Recent(n int) []*model.Status {
 	snapPtr := b.snapshot.Load()
@@ -79,3 +136,4 @@ func (b *Buffer) Recent(n int) []*model.Status {
 	}
 	return snap[:n]
 }
+
