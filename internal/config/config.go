@@ -1,3 +1,5 @@
+// Package config defines the parsing and validation rules for application
+// configurations and command line settings.
 package config
 
 import (

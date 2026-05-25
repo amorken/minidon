@@ -128,7 +128,7 @@ func (m *meiliIndex) Search(ctx context.Context, query string, opts SearchOption
 		return SearchResult{}, fmt.Errorf("meili: failed to marshal hits: %w", err)
 	}
 
-	var hits []model.Status
+	hits := []model.Status{}
 	if err := json.Unmarshal(hitsJSON, &hits); err != nil {
 		return SearchResult{}, fmt.Errorf("meili: failed to unmarshal hits to statuses: %w", err)
 	}
@@ -150,17 +150,17 @@ func (m *meiliIndex) applySettings(ctx context.Context) error {
 
 	searchable := []string{"content", "account.acct", "account.display_name", "tags.name"}
 	if _, err := m.index.UpdateSearchableAttributesWithContext(attemptCtx, &searchable); err != nil {
-		return fmt.Errorf("failed to update searchable attributes: %w", err)
+		return fmt.Errorf("meili: failed to update searchable attributes: %w", err)
 	}
 
 	sortable := []string{"created_at"}
 	if _, err := m.index.UpdateSortableAttributesWithContext(attemptCtx, &sortable); err != nil {
-		return fmt.Errorf("failed to update sortable attributes: %w", err)
+		return fmt.Errorf("meili: failed to update sortable attributes: %w", err)
 	}
 
 	filterable := []any{"language", "tags.name"}
 	if _, err := m.index.UpdateFilterableAttributesWithContext(attemptCtx, &filterable); err != nil {
-		return fmt.Errorf("failed to update filterable attributes: %w", err)
+		return fmt.Errorf("meili: failed to update filterable attributes: %w", err)
 	}
 
 	return nil
@@ -170,7 +170,7 @@ func (m *meiliIndex) applySettings(ctx context.Context) error {
 // If MeiliSearch is starting up, it retries with a backoff.
 func (m *meiliIndex) EnsureSettings(ctx context.Context) error {
 	var err error
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

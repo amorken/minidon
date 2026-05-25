@@ -189,7 +189,7 @@ func TestFakeClientImplementsInterface(t *testing.T) {
 
 func TestNextBackoff(t *testing.T) {
 	b := 1 * time.Second
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		b = nextBackoff(b)
 	}
 	if b != 60*time.Second {

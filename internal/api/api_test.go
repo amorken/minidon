@@ -49,7 +49,13 @@ func TestReadyz(t *testing.T) {
 	fc := mastodon.NewFakeClient()
 	pipe := ingest.New(fc.Events(), buf, idx)
 
-	mux := api.NewRouter(nil, buf, idx, pipe, fc)
+	mux := api.NewRouter(api.RouterConfig{
+		StaticFS: nil,
+		Buffer:   buf,
+		Index:    idx,
+		Pipeline: pipe,
+		Client:   fc,
+	})
 
 	// 1. Test readyz when disconnected
 	req := httptest.NewRequest("GET", "/readyz", nil)
@@ -79,7 +85,13 @@ func TestTimelineRoute(t *testing.T) {
 	s := &model.Status{ID: "timeline-1", Content: "Hello"}
 	buf.Add(s)
 
-	mux := api.NewRouter(nil, buf, idx, pipe, fc)
+	mux := api.NewRouter(api.RouterConfig{
+		StaticFS: nil,
+		Buffer:   buf,
+		Index:    idx,
+		Pipeline: pipe,
+		Client:   fc,
+	})
 
 	req := httptest.NewRequest("GET", "/api/timeline?limit=10", nil)
 	rr := httptest.NewRecorder()
@@ -113,7 +125,13 @@ func TestSearchRoute(t *testing.T) {
 	fc := mastodon.NewFakeClient()
 	pipe := ingest.New(fc.Events(), buf, idx)
 
-	mux := api.NewRouter(nil, buf, idx, pipe, fc)
+	mux := api.NewRouter(api.RouterConfig{
+		StaticFS: nil,
+		Buffer:   buf,
+		Index:    idx,
+		Pipeline: pipe,
+		Client:   fc,
+	})
 
 	req := httptest.NewRequest("GET", "/api/search?q=test&limit=5&offset=2", nil)
 	rr := httptest.NewRecorder()

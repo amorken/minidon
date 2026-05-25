@@ -16,13 +16,13 @@ func searchHandler(idx index.Index) http.HandlerFunc {
 			return
 		}
 
-		limit, err := queryInt(r, "limit", 20, 1, 100)
+		limit, err := queryInt(r, "limit", intParam{defaultVal: 20, minVal: 1, maxVal: 100})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		offset, err := queryInt(r, "offset", 0, 0, 1000000)
+		offset, err := queryInt(r, "offset", intParam{defaultVal: 0, minVal: 0, maxVal: 1000000})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
