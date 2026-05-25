@@ -51,6 +51,7 @@ func (m *mockSearchIndex) SaveSinceID(ctx context.Context, sinceID string) error
 	return nil
 }
 
+
 func TestReadyz(t *testing.T) {
 	buf := buffer.New(10)
 	idx := &mockSearchIndex{}

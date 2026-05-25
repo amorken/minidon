@@ -17,5 +17,5 @@ The codebase is fully integrated with working implementations of the planned bac
 | **Ingest Pipeline** | **Complete** | [internal/ingest/ingest.go](../internal/ingest/ingest.go) | Orchestrates fan-out streaming, debounced search index batching, and client SSE registrations. |
 | **HTTP API Router** | **Complete** | [internal/api/router.go](../internal/api/router.go) | Routes requests for timelines, searches, streams, and health probes. |
 | **HTTP API Handlers**| **Complete** | [internal/api/](../internal/api/) | Full implementations for timeline, search, stream handlers, and health endpoints. |
-| **Main Entrypoint** | **Complete** | [cmd/minidon/main.go](../cmd/minidon/main.go) | Wires component initialization, CLI/Web modes, and graceful shutdown lifecycle. |
+| **Main Entrypoint** | **Complete** | [cmd/minidon/main.go](../cmd/minidon/main.go) | Wires component initialization, CLI/Web/Delete-Index modes, and graceful shutdown lifecycle. |
 | **Frontend SPA** | **Complete** | [web/src/App.tsx](../web/src/App.tsx) | App UI with timeline streams, debounced search, detailed modals, and connection indicators. |

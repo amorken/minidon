@@ -74,3 +74,4 @@ func (n *NoopIndex) GetSinceID(ctx context.Context) (string, error) {
 func (n *NoopIndex) SaveSinceID(ctx context.Context, sinceID string) error {
 	return nil
 }
+

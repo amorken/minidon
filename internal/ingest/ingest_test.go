@@ -55,6 +55,7 @@ func (m *mockIndex) SaveSinceID(ctx context.Context, sinceID string) error {
 	return nil
 }
 
+
 func TestPipeline_Start(t *testing.T) {
 	src := make(chan *model.Event, 10)
 	buf := buffer.New(5)

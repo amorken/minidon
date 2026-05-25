@@ -186,3 +186,106 @@ func TestMeiliIndex_SinceID(t *testing.T) {
 	}
 }
 
+func TestMeiliIndex_Clear(t *testing.T) {
+	var statusesDeleted, stateDeleted bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer master-key-123" && auth != "Bearer admin-key-xyz" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		if r.URL.Path == "/keys" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"results": [
+					{
+						"name": "Default Admin API Key",
+						"key": "admin-key-xyz"
+					}
+				]
+			}`))
+			return
+		}
+
+		if r.URL.Path == "/indexes/statuses/documents" && r.Method == "DELETE" {
+			statusesDeleted = true
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"taskUid": 1}`))
+			return
+		}
+
+		if r.URL.Path == "/indexes/minidon_state/documents" && r.Method == "DELETE" {
+			stateDeleted = true
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"taskUid": 2}`))
+			return
+		}
+
+		http.Error(w, "Not Found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	err := index.Clear(context.Background(), server.URL, "master-key-123")
+	if err != nil {
+		t.Fatalf("unexpected error on Clear: %v", err)
+	}
+
+	if !statusesDeleted {
+		t.Error("expected statuses documents deletion request, but none was received")
+	}
+	if !stateDeleted {
+		t.Error("expected minidon_state documents deletion request, but none was received")
+	}
+}
+
+func TestMeiliIndex_Clear_IndexNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer master-key-123" && auth != "Bearer admin-key-xyz" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		if r.URL.Path == "/keys" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"results": [
+					{
+						"name": "Default Admin API Key",
+						"key": "admin-key-xyz"
+					}
+				]
+			}`))
+			return
+		}
+
+		if r.URL.Path == "/indexes/statuses/documents" && r.Method == "DELETE" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Index not found","code":"index_not_found","type":"invalid_request"}`))
+			return
+		}
+
+		if r.URL.Path == "/indexes/minidon_state/documents" && r.Method == "DELETE" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Index not found","code":"index_not_found","type":"invalid_request"}`))
+			return
+		}
+
+		http.Error(w, "Not Found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	err := index.Clear(context.Background(), server.URL, "master-key-123")
+	if err != nil {
+		t.Fatalf("expected no error when index is not found, got: %v", err)
+	}
+}
+
+
+

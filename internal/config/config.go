@@ -12,6 +12,8 @@ type CliCmd struct {
 	Format string `kong:"default='json',enum='json,text',help='Output format for cli mode: json or text.'"`
 }
 
+type DeleteIndexCmd struct{}
+
 type Config struct {
 	DisableSearch        bool   `kong:"name='disable-search',env='MINIDON_DISABLE_SEARCH',help='Disable search functionality.'"`
 	Listen               string `kong:"env='MINIDON_LISTEN',default=':8080',help='TCP address to listen on.'"`
@@ -26,8 +28,9 @@ type Config struct {
 	BufferSize           int    `kong:"env='MINIDON_BUFFER_SIZE',default='500',help='Number of recent statuses to keep in the ring buffer.'"`
 	Verbose              bool   `kong:"short='v',name='verbose',env='MINIDON_VERBOSE',help='Enable verbose logging.'"`
 
-	Web WebCmd `kong:"cmd,default='1',help='Run the web application server (default).'"`
-	Cli CliCmd `kong:"cmd,help='Run the streaming timeline client CLI.'"`
+	Web         WebCmd         `kong:"cmd,default='1',help='Run the web application server (default).'"`
+	Cli         CliCmd         `kong:"cmd,help='Run the streaming timeline client CLI.'"`
+	DeleteIndex DeleteIndexCmd `kong:"cmd,name='delete-index',help='Delete/clear out index state from MeiliSearch.'"`
 }
 
 func (c *Config) Validate() error {
