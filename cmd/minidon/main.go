@@ -175,7 +175,13 @@ func main() {
 	}
 
 	// 5. Build router and mount API/static Handlers
-	mux := api.NewRouter(minidon.StaticFS, buf, idx, pipeline, mClient)
+	mux := api.NewRouter(api.RouterConfig{
+		StaticFS: minidon.StaticFS,
+		Buffer:   buf,
+		Index:    idx,
+		Pipeline: pipeline,
+		Client:   mClient,
+	})
 
 	srv := &http.Server{
 		Addr:         cfg.Listen,
