@@ -73,6 +73,28 @@ func TestLoad(t *testing.T) {
 			wantVerbose: true,
 		},
 		{
+			name: "PublicLocalStream",
+			env: map[string]string{
+				"MINIDON_MASTODON_STREAM": "public:local",
+			},
+			wantListen:  ":8080",
+			wantBuf:     500,
+			wantStream:  "public:local",
+			wantDisable: false,
+			wantVerbose: false,
+		},
+		{
+			name: "UserLocalStream",
+			env: map[string]string{
+				"MINIDON_MASTODON_STREAM": "user:local",
+			},
+			wantListen:  ":8080",
+			wantBuf:     500,
+			wantStream:  "user:local",
+			wantDisable: false,
+			wantVerbose: false,
+		},
+		{
 			name: "InvalidStreamEnum",
 			env: map[string]string{
 				"MINIDON_MASTODON_STREAM": "invalid_stream",

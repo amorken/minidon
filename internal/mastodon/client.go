@@ -101,9 +101,12 @@ func (m *mastodonClient) stream(ctx context.Context) {
 
 		var events chan mstdn.Event
 		var err error
-		if m.cfg.Stream == "public" {
+		switch m.cfg.Stream {
+		case "public":
 			events, err = m.ws.StreamingWSPublic(ctx, false)
-		} else {
+		case "public:local":
+			events, err = m.ws.StreamingWSPublic(ctx, true)
+		default:
 			events, err = m.ws.StreamingWSUser(ctx)
 		}
 		if err != nil {
@@ -144,9 +147,12 @@ func (m *mastodonClient) backfill(ctx context.Context) {
 	slog.Info("starting mastodon REST backfill", "server", m.cfg.Server, "stream", m.cfg.Stream)
 	var statuses []*mstdn.Status
 	var err error
-	if m.cfg.Stream == "public" {
+	switch m.cfg.Stream {
+	case "public":
 		statuses, err = m.client.GetTimelinePublic(ctx, false, nil)
-	} else {
+	case "public:local":
+		statuses, err = m.client.GetTimelinePublic(ctx, true, nil)
+	default:
 		statuses, err = m.client.GetTimelineHome(ctx, nil)
 	}
 
