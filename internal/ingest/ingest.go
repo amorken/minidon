@@ -80,6 +80,8 @@ func (p *Pipeline) Start(ctx context.Context) {
 				return
 			}
 
+			slog.Debug("ingest pipeline received status", "id", status.ID)
+
 			// Immediate synchronous write to ring buffer with duplicate filtering
 			added := p.buffer.Add(status)
 			if !added {

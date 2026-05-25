@@ -16,6 +16,7 @@ func TestLoad(t *testing.T) {
 		wantBuf       int
 		wantStream    string
 		wantDisable   bool
+		wantVerbose   bool
 		wantErr       bool
 	}{
 		{
@@ -24,6 +25,7 @@ func TestLoad(t *testing.T) {
 			wantBuf:     500,
 			wantStream:  "public",
 			wantDisable: false,
+			wantVerbose: false,
 		},
 		{
 			name: "EnvOverrides",
@@ -32,11 +34,13 @@ func TestLoad(t *testing.T) {
 				"MINIDON_BUFFER_SIZE":     "1000",
 				"MINIDON_MASTODON_STREAM": "public",
 				"MINIDON_DISABLE_SEARCH":  "true",
+				"MINIDON_VERBOSE":         "true",
 			},
 			wantListen:  ":9090",
 			wantBuf:     1000,
 			wantStream:  "public",
 			wantDisable: true,
+			wantVerbose: true,
 		},
 		{
 			name: "ArgsOverridesEnv",
@@ -48,6 +52,25 @@ func TestLoad(t *testing.T) {
 			wantBuf:     500,
 			wantStream:  "public",
 			wantDisable: false,
+			wantVerbose: false,
+		},
+		{
+			name:        "ArgsVerboseShort",
+			args:        []string{"-v"},
+			wantListen:  ":8080",
+			wantBuf:     500,
+			wantStream:  "public",
+			wantDisable: false,
+			wantVerbose: true,
+		},
+		{
+			name:        "ArgsVerboseLong",
+			args:        []string{"--verbose"},
+			wantListen:  ":8080",
+			wantBuf:     500,
+			wantStream:  "public",
+			wantDisable: false,
+			wantVerbose: true,
 		},
 		{
 			name: "InvalidStreamEnum",
@@ -95,6 +118,9 @@ func TestLoad(t *testing.T) {
 			}
 			if cfg.DisableSearch != tt.wantDisable {
 				t.Errorf("DisableSearch = %v, want %v", cfg.DisableSearch, tt.wantDisable)
+			}
+			if cfg.Verbose != tt.wantVerbose {
+				t.Errorf("Verbose = %v, want %v", cfg.Verbose, tt.wantVerbose)
 			}
 		})
 	}

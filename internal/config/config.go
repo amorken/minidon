@@ -22,6 +22,7 @@ type Config struct {
 	MeiliURL             string `kong:"env='MINIDON_MEILI_URL',default='http://localhost:7700',help='MeiliSearch base URL.'"`
 	MeiliKey             string `kong:"env='MINIDON_MEILI_KEY',help='MeiliSearch API key.'"`
 	BufferSize           int    `kong:"env='MINIDON_BUFFER_SIZE',default='500',help='Number of recent statuses to keep in the ring buffer.'"`
+	Verbose              bool   `kong:"short='v',name='verbose',env='MINIDON_VERBOSE',help='Enable verbose logging.'"`
 
 	Web WebCmd `kong:"cmd,default='1',help='Run the web application server (default).'"`
 	Cli CliCmd `kong:"cmd,help='Run the streaming timeline client CLI.'"`

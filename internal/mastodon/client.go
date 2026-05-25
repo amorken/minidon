@@ -184,6 +184,7 @@ func (m *mastodonClient) drain(ctx context.Context, events chan mstdn.Event) boo
 			}
 			switch e := ev.(type) {
 			case *mstdn.UpdateEvent:
+				slog.Debug("received mastodon update event", "id", e.Status.ID)
 				select {
 				case m.out <- convertStatus(e.Status):
 				default:
@@ -192,7 +193,7 @@ func (m *mastodonClient) drain(ctx context.Context, events chan mstdn.Event) boo
 			case *mstdn.ErrorEvent:
 				slog.Error("mastodon stream error event", "err", e.Err)
 			default:
-				slog.Info("mastodon unhandled event type", "type", fmt.Sprintf("%T", ev))
+				slog.Debug("mastodon unhandled event type", "type", fmt.Sprintf("%T", ev))
 			}
 		}
 	}
