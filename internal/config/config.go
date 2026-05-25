@@ -2,84 +2,44 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 )
 
-type Config struct {
-	Listen               string
-	MastodonInstance     string
-	MastodonClientID     string
-	MastodonClientSecret string
-	MastodonAccessToken  string
-	MastodonStreamPath   string
-	MastodonStream       string
-	MeiliURL             string
-	MeiliKey             string
-	BufferSize           int
-	DisableSearch        bool
+type WebCmd struct{}
+
+type CliCmd struct {
+	Format string `kong:"default='json',enum='json,text',help='Output format for cli mode: json or text.'"`
 }
 
-func Load() *Config {
-	cfg := &Config{
-		Listen:               getEnv("MINIDON_LISTEN", ":8080"),
-		MeiliURL:             getEnv("MINIDON_MEILI_URL", "http://localhost:7700"),
-		MeiliKey:             os.Getenv("MINIDON_MEILI_KEY"),
-		BufferSize:           getEnvInt("MINIDON_BUFFER_SIZE", 500),
-		DisableSearch:        getEnvBool("MINIDON_DISABLE_SEARCH", false),
-		MastodonInstance:     os.Getenv("MINIDON_MASTODON_INSTANCE"),
-		MastodonClientID:     os.Getenv("MINIDON_MASTODON_CLIENT_ID"),
-		MastodonClientSecret: os.Getenv("MINIDON_MASTODON_CLIENT_SECRET"),
-		MastodonAccessToken:  os.Getenv("MINIDON_MASTODON_ACCESS_TOKEN"),
-		MastodonStreamPath:   getEnv("MINIDON_MASTODON_STREAM_PATH", "api/v1/streaming"),
-		MastodonStream:       getEnv("MINIDON_MASTODON_STREAM", "user"),
-	}
-	return cfg
+type Config struct {
+	DisableSearch bool   `kong:"name='disable-search',env='MINIDON_DISABLE_SEARCH',help='Disable search functionality.'"`
+	Listen               string `kong:"env='MINIDON_LISTEN',default=':8080',help='TCP address to listen on.'"`
+	MastodonInstance     string `kong:"env='MINIDON_MASTODON_INSTANCE',help='Mastodon instance hostname.'"`
+	MastodonClientID     string `kong:"env='MINIDON_MASTODON_CLIENT_ID',help='Mastodon client ID.'"`
+	MastodonClientSecret string `kong:"env='MINIDON_MASTODON_CLIENT_SECRET',help='Mastodon client secret.'"`
+	MastodonAccessToken  string `kong:"env='MINIDON_MASTODON_ACCESS_TOKEN',help='Mastodon access token.'"`
+	MastodonStreamPath   string `kong:"env='MINIDON_MASTODON_STREAM_PATH',default='api/v1/streaming',help='Mastodon streaming API path.'"`
+	MastodonStream       string `kong:"env='MINIDON_MASTODON_STREAM',default='user',enum='user,public',help='Mastodon stream type: user or public.'"`
+	MeiliURL             string `kong:"env='MINIDON_MEILI_URL',default='http://localhost:7700',help='MeiliSearch base URL.'"`
+	MeiliKey             string `kong:"env='MINIDON_MEILI_KEY',help='MeiliSearch API key.'"`
+	BufferSize           int    `kong:"env='MINIDON_BUFFER_SIZE',default='500',help='Number of recent statuses to keep in the ring buffer.'"`
+
+	Web WebCmd `kong:"cmd,default='1',help='Run the web application server (default).'"`
+	Cli CliCmd `kong:"cmd,help='Run the streaming timeline client CLI.'"`
 }
 
 func (c *Config) Validate() error {
-	if c.MastodonInstance == "" {
-		return fmt.Errorf("MINIDON_MASTODON_INSTANCE is required")
-	}
-	if c.MastodonAccessToken == "" {
-		return fmt.Errorf("MINIDON_MASTODON_ACCESS_TOKEN is required")
-	}
-	if c.MastodonStream != "user" && c.MastodonStream != "public" {
-		return fmt.Errorf("MINIDON_MASTODON_STREAM must be 'user' or 'public', got %q", c.MastodonStream)
-	}
 	if c.BufferSize <= 0 {
-		return fmt.Errorf("MINIDON_BUFFER_SIZE must be positive, got %d", c.BufferSize)
+		return fmt.Errorf("buffer size must be positive, got %d", c.BufferSize)
 	}
 	return nil
 }
 
-func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+func (c *Config) ValidateMastodon() error {
+	if c.MastodonInstance == "" {
+		return fmt.Errorf("MINIDON_MASTODON_INSTANCE (or --mastodon-instance) is required")
 	}
-	return fallback
-}
-
-func getEnvInt(key string, fallback int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
+	if c.MastodonAccessToken == "" {
+		return fmt.Errorf("MINIDON_MASTODON_ACCESS_TOKEN (or --mastodon-access-token) is required")
 	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return fallback
-	}
-	return n
-}
-
-func getEnvBool(key string, fallback bool) bool {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	b, err := strconv.ParseBool(v)
-	if err != nil {
-		return fallback
-	}
-	return b
+	return nil
 }
