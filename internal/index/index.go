@@ -2,9 +2,24 @@ package index
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/amorken/minidon/internal/model"
 )
+
+// NewFromConfig constructs a search index implementation (MeiliSearch or NoopIndex) based on configuration.
+func NewFromConfig(disabled bool, url, apiKey string) Index {
+	if disabled {
+		slog.Info("Search functionality disabled; using Noop search index")
+		return &NoopIndex{}
+	}
+	if url != "" {
+		slog.Info("connected to MeiliSearch backend", "url", url)
+		return NewMeiliIndex(url, apiKey)
+	}
+	slog.Info("MeiliSearch not configured; using Noop search index")
+	return &NoopIndex{}
+}
 
 type SearchOptions struct {
 	Limit  int

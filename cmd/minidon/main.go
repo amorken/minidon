@@ -103,18 +103,8 @@ func main() {
 	slog.Info("initialized in-memory ring buffer", "size", cfg.BufferSize)
 
 	// 2. Initialize Search Backend (MeiliSearch or Noop Index)
-	var idx index.Index
+	idx := index.NewFromConfig(cfg.DisableSearch, cfg.MeiliURL, cfg.MeiliKey)
 	var err error
-	if cfg.DisableSearch {
-		slog.Info("Search functionality disabled; using Noop search index")
-		idx = &index.NoopIndex{}
-	} else if cfg.MeiliURL != "" {
-		idx = index.NewMeiliIndex(cfg.MeiliURL, cfg.MeiliKey)
-		slog.Info("connected to MeiliSearch backend", "url", cfg.MeiliURL)
-	} else {
-		slog.Info("MeiliSearch not configured; using Noop search index")
-		idx = &index.NoopIndex{}
-	}
 
 	// Ensure Settings
 	if err := idx.EnsureSettings(appCtx); err != nil {
