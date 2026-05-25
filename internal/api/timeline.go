@@ -10,7 +10,7 @@ import (
 
 func timelineHandler(buf *buffer.Buffer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		limit, err := queryInt(r, "limit", 50, 1, 200)
+		limit, err := queryInt(r, "limit", intParam{defaultVal: 50, minVal: 1, maxVal: 200})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
