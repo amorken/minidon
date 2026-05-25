@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/amorken/minidon"
 	"github.com/amorken/minidon/internal/api"
 	"github.com/amorken/minidon/internal/buffer"
@@ -26,62 +26,16 @@ import (
 	"github.com/amorken/minidon/internal/model"
 )
 
-func printHelp() {
-	fmt.Println("Usage: minidon [options]")
-	fmt.Println()
-	fmt.Println("A Mastodon public-timeline streaming web app.")
-	fmt.Println()
-	fmt.Println("Options:")
-	fmt.Println("  -h, --help      Show this help message and exit")
-	fmt.Println("  --mode          execution mode: 'web' or 'cli' (default: \"web\")")
-	fmt.Println("  --format        output format for cli mode: 'json' or 'text' (default: \"json\")")
-	fmt.Println("  --disable-search Disable search functionality (default: false)")
-	fmt.Println()
-	fmt.Println("Configuration (via environment variables):")
-	fmt.Println("  MINIDON_LISTEN                  TCP address to listen on (default: \":8080\")")
-	fmt.Println("  MINIDON_MASTODON_INSTANCE       Mastodon instance hostname (required for live streaming)")
-	fmt.Println("  MINIDON_MASTODON_ACCESS_TOKEN   Mastodon access token (required for live streaming)")
-	fmt.Println("  MINIDON_MASTODON_CLIENT_ID      Mastodon client ID (optional)")
-	fmt.Println("  MINIDON_MASTODON_CLIENT_SECRET  Mastodon client secret (optional)")
-	fmt.Println("  MINIDON_MASTODON_STREAM         Mastodon stream type: 'user' or 'public' (default: \"user\")")
-	fmt.Println("  MINIDON_MASTODON_STREAM_PATH    Mastodon streaming API path (default: \"api/v1/streaming\")")
-	fmt.Println("  MINIDON_MEILI_URL               MeiliSearch base URL (default: \"http://localhost:7700\")")
-	fmt.Println("  MINIDON_MEILI_KEY               MeiliSearch API key (optional)")
-	fmt.Println("  MINIDON_DISABLE_SEARCH          Disable search functionality (default: false)")
-	fmt.Println("  MINIDON_BUFFER_SIZE             Number of recent statuses to keep in the ring buffer (default: 500)")
-}
-
 func main() {
-	// Parse custom help flags first
-	for _, arg := range os.Args[1:] {
-		if arg == "-h" || arg == "--help" {
-			printHelp()
-			os.Exit(0)
-		}
-	}
-
-	mode := flag.String("mode", "web", "execution mode (web or cli)")
-	format := flag.String("format", "json", "output format for cli mode (json or text)")
-	disableSearch := flag.Bool("disable-search", false, "disable search functionality")
-	flag.Parse()
-
-	if *mode != "web" && *mode != "cli" {
-		fmt.Fprintf(os.Stderr, "invalid mode: %s. valid options are 'web' or 'cli'\n", *mode)
-		os.Exit(1)
-	}
-
-	if *format != "json" && *format != "text" {
-		fmt.Fprintf(os.Stderr, "invalid format: %s. valid options are 'json' or 'text'\n", *format)
-		os.Exit(1)
-	}
-
-	cfg := config.Load()
-	if *disableSearch {
-		cfg.DisableSearch = true
-	}
+	var cfg config.Config
+	ctx := kong.Parse(&cfg,
+		kong.Name("minidon"),
+		kong.Description("A Mastodon public-timeline streaming web app."),
+		kong.UsageOnError(),
+	)
 
 	var logWriter io.Writer = os.Stdout
-	if *mode == "cli" {
+	if ctx.Command() == "cli" {
 		logWriter = os.Stderr
 	}
 
@@ -92,8 +46,8 @@ func main() {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
 
-	if *mode == "cli" {
-		if err := cfg.Validate(); err != nil {
+	if ctx.Command() == "cli" {
+		if err := cfg.ValidateMastodon(); err != nil {
 			fmt.Fprintf(os.Stderr, "configuration error: %v\n", err)
 			os.Exit(1)
 		}
@@ -119,7 +73,7 @@ func main() {
 		}
 		defer mClient.Close()
 
-		slog.Info("starting stream client CLI mode", "format", *format)
+		slog.Info("starting stream client CLI mode", "format", cfg.Cli.Format)
 
 		statuses := mClient.Statuses()
 		for {
@@ -132,7 +86,7 @@ func main() {
 					slog.Info("stream channel closed")
 					return
 				}
-				if err := printStatus(status, *format); err != nil {
+				if err := printStatus(status, cfg.Cli.Format); err != nil {
 					slog.Error("failed to print status", "err", err)
 				}
 			}
@@ -140,7 +94,7 @@ func main() {
 	}
 
 	// Web mode (default)
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateMastodon(); err != nil {
 		slog.Warn("configuration warning", "err", err)
 	}
 
