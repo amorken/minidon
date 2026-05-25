@@ -4,25 +4,16 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/amorken/minidon/internal/buffer"
 )
 
 func timelineHandler(buf *buffer.Buffer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		limitStr := r.URL.Query().Get("limit")
-		limit := 50
-		if limitStr != "" {
-			var err error
-			limit, err = strconv.Atoi(limitStr)
-			if err != nil || limit <= 0 {
-				http.Error(w, "invalid limit parameter", http.StatusBadRequest)
-				return
-			}
-			if limit > 200 {
-				limit = 200
-			}
+		limit, err := queryInt(r, "limit", 50, 1, 200)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		statuses := buf.Recent(limit)

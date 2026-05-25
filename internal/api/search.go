@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/amorken/minidon/internal/index"
 )
@@ -17,29 +16,16 @@ func searchHandler(idx index.Index) http.HandlerFunc {
 			return
 		}
 
-		limitStr := r.URL.Query().Get("limit")
-		limit := 20
-		if limitStr != "" {
-			var err error
-			limit, err = strconv.Atoi(limitStr)
-			if err != nil || limit <= 0 {
-				http.Error(w, "invalid limit parameter", http.StatusBadRequest)
-				return
-			}
-			if limit > 100 {
-				limit = 100
-			}
+		limit, err := queryInt(r, "limit", 20, 1, 100)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
-		offsetStr := r.URL.Query().Get("offset")
-		offset := 0
-		if offsetStr != "" {
-			var err error
-			offset, err = strconv.Atoi(offsetStr)
-			if err != nil || offset < 0 {
-				http.Error(w, "invalid offset parameter", http.StatusBadRequest)
-				return
-			}
+		offset, err := queryInt(r, "offset", 0, 0, 1000000)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		opts := index.SearchOptions{
