@@ -34,10 +34,74 @@ func main() {
 		kong.UsageOnError(),
 	)
 
-	var logWriter io.Writer = os.Stdout
-	if kongCtx.Command() == "cli" {
-		logWriter = os.Stderr
+	// Consolidate CLI vs Web mode setup and dispatching
+	switch kongCtx.Command() {
+	case "cli":
+		runCLI(cfg)
+	default:
+		runWeb(cfg)
 	}
+}
+
+func runCLI(cfg config.Config) {
+	logWriter := io.Writer(os.Stderr)
+
+	logLevel := slog.LevelInfo
+	if cfg.Verbose {
+		logLevel = slog.LevelDebug
+	}
+
+	logger := slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: logLevel}))
+	slog.SetDefault(logger)
+
+	if err := cfg.ValidateMastodon(); err != nil {
+		fmt.Fprintf(os.Stderr, "configuration error: %v\n", err)
+		os.Exit(1)
+	}
+
+	mClient, err := mastodon.New(mastodon.Config{
+		Server:       cfg.MastodonInstance,
+		ClientID:     cfg.MastodonClientID,
+		ClientSecret: cfg.MastodonClientSecret,
+		AccessToken:  cfg.MastodonAccessToken,
+		Stream:       cfg.MastodonStream,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize mastodon client: %v\n", err)
+		os.Exit(1)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := mClient.Connect(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to connect to stream: %v\n", err)
+		os.Exit(1)
+	}
+	defer mClient.Close()
+
+	slog.Info("starting stream client CLI mode", "format", cfg.Cli.Format)
+
+	statuses := mClient.Statuses()
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("stopping stream client")
+			return
+		case status, ok := <-statuses:
+			if !ok {
+				slog.Info("stream channel closed")
+				return
+			}
+			if err := printStatus(status, cfg.Cli.Format); err != nil {
+				slog.Error("failed to print status", "err", err)
+			}
+		}
+	}
+}
+
+func runWeb(cfg config.Config) {
+	logWriter := io.Writer(os.Stdout)
 
 	logLevel := slog.LevelInfo
 	if cfg.Verbose {
@@ -51,54 +115,6 @@ func main() {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
 
-	if kongCtx.Command() == "cli" {
-		if err := cfg.ValidateMastodon(); err != nil {
-			fmt.Fprintf(os.Stderr, "configuration error: %v\n", err)
-			os.Exit(1)
-		}
-
-		mClient, err := mastodon.New(mastodon.Config{
-			Server:       cfg.MastodonInstance,
-			ClientID:     cfg.MastodonClientID,
-			ClientSecret: cfg.MastodonClientSecret,
-			AccessToken:  cfg.MastodonAccessToken,
-			Stream:       cfg.MastodonStream,
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to initialize mastodon client: %v\n", err)
-			os.Exit(1)
-		}
-
-		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-		defer stop()
-
-		if err := mClient.Connect(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to connect to stream: %v\n", err)
-			os.Exit(1)
-		}
-		defer mClient.Close()
-
-		slog.Info("starting stream client CLI mode", "format", cfg.Cli.Format)
-
-		statuses := mClient.Statuses()
-		for {
-			select {
-			case <-ctx.Done():
-				slog.Info("stopping stream client")
-				return
-			case status, ok := <-statuses:
-				if !ok {
-					slog.Info("stream channel closed")
-					return
-				}
-				if err := printStatus(status, cfg.Cli.Format); err != nil {
-					slog.Error("failed to print status", "err", err)
-				}
-			}
-		}
-	}
-
-	// Web mode (default)
 	if err := cfg.ValidateMastodon(); err != nil {
 		slog.Warn("configuration warning", "err", err)
 	}
@@ -243,7 +259,7 @@ func printStatus(s *model.Status, format string) error {
 	if format == "json" {
 		data, err := json.Marshal(s)
 		if err != nil {
-			return err
+			return fmt.Errorf("printStatus: failed to marshal status as JSON: %w", err)
 		}
 		fmt.Println(string(data))
 		return nil
@@ -280,7 +296,7 @@ func formatStatusText(s *model.Status, indent int) string {
 	}
 
 	if len(s.MediaAttachments) > 0 {
-		var atts []string
+		atts := make([]string, 0, len(s.MediaAttachments))
 		for _, att := range s.MediaAttachments {
 			atts = append(atts, fmt.Sprintf("%s [%s]", att.PreviewURL, att.Type))
 		}
@@ -288,7 +304,7 @@ func formatStatusText(s *model.Status, indent int) string {
 	}
 
 	if len(s.Tags) > 0 {
-		var tags []string
+		tags := make([]string, 0, len(s.Tags))
 		for _, t := range s.Tags {
 			tags = append(tags, "#"+t.Name)
 		}
