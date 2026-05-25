@@ -22,7 +22,7 @@ func TestLoad(t *testing.T) {
 			name:        "Defaults",
 			wantListen:  ":8080",
 			wantBuf:     500,
-			wantStream:  "user",
+			wantStream:  "public",
 			wantDisable: false,
 		},
 		{
@@ -46,7 +46,7 @@ func TestLoad(t *testing.T) {
 			args:        []string{"--listen=:9999"},
 			wantListen:  ":9999",
 			wantBuf:     500,
-			wantStream:  "user",
+			wantStream:  "public",
 			wantDisable: false,
 		},
 		{
