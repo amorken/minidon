@@ -1,8 +1,5 @@
 # minidon — HTTP API Reference
 
-> **Placeholder** — this document will be filled in once the HTTP handlers
-> are implemented.  The routes below are the planned API surface.
-
 ---
 
 ## Base URL

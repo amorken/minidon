@@ -1,6 +1,6 @@
 # minidon — Coding Agent Guide (`AGENTS.md`)
 
-This guide is compiled for AI coding agents to help you quickly understand the current state of the codebase, build and test mechanics, and how to implement the missing components.
+This guide is compiled for AI coding agents to help you quickly understand the current state of the codebase, build and test mechanics, and how to verify, maintain, or refine the implementations.
 
 ---
 
@@ -89,9 +89,9 @@ You can build and test the project using the following `make` targets:
 
 ---
 
-## 4. Implementation Details & Guidelines
+## 4. Component Details & Design Specifications
 
-Follow these specifications for implementing each component to ensure your code matches the architect's design goals.
+Review and verify these specifications for each component to ensure behavior matches the architect's design goals.
 
 ### A. Ring Buffer (`internal/buffer`)
 * **Goal**: Bounded, in-memory, thread-safe cache.

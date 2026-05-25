@@ -2,20 +2,20 @@
 
 This document tracks the implementation progress of `minidon` components against the planned design.
 
-## Implementation Gap Analysis (Planned vs. Built)
+## Implementation Status
 
-While the documentation outlines a complete architecture, the implementation is currently in an **early scaffolding state**. Below is a summary of what is built versus what is missing:
+The codebase is fully integrated with working implementations of the planned backend and frontend components. However, additional verification, testing, and handling of edge cases (such as rate limits and reconnection states) may require further refinement.
 
 | Component | Status | Location | Notes |
 | :--- | :--- | :--- | :--- |
 | **Data Model** | **Complete** | [internal/model/status.go](../internal/model/status.go) | Defines the shared `Status` and related DTOs. |
-| **Config Loader** | **Complete** | [internal/config/config.go](../internal/config/config.go) | Loads settings from CLI flags and environment variables via Kong, supporting subcommands. |
+| **Config Loader** | **Complete** | [internal/config/config.go](../internal/config/config.go) | Loads settings from CLI flags and environment variables via Kong. |
 | **Static Assets** | **Complete** | [internal/static/static.go](../internal/static/static.go) | Implements embedding/serving with caching policies. |
-| **Mastodon Client** | **Partial** | [internal/mastodon/client.go](../internal/mastodon/client.go) | Streaming connection is built. **Missing**: Periodic REST fallback (backfill) on reconnect to prevent gaps in timeline. Not yet wired in `main.go`. |
-| **Ring Buffer** | **Stub** | [internal/buffer/buffer.go](../internal/buffer/buffer.go) | Contains only package-level doc comments. Needs struct and implementation. |
-| **Search Index** | **Stub** | [internal/index/](../internal/index/) | `index.go` and `meili.go` contain only package-level comments. Needs interface, MeiliSearch client wrapper, settings initialization, and search methods. |
-| **Ingest Pipeline** | **Stub** | [internal/ingest/ingest.go](../internal/ingest/ingest.go) | Contains only package-level comments. Needs fan-out goroutine, debounced indexing, and thread-safe SSE subscription management. |
-| **HTTP API Router** | **Partial** | [internal/api/router.go](../internal/api/router.go) | Router is defined, but `/api/timeline`, `/api/search`, and `/api/stream` handlers return `501 Not Implemented`. |
-| **HTTP API Handlers**| **Stub** | [internal/api/](../internal/api/) | `search.go`, `stream.go`, `timeline.go` contain only comments. Handlers need to be written. |
-| **Main Entrypoint** | **Stub** | [cmd/minidon/main.go](../cmd/minidon/main.go) | Sets up router and starts HTTP server. **Missing**: Component initialization (Mastodon client, buffer, index, ingest pipeline), lifecycle wiring, and graceful shutdown integration. |
-| **Frontend SPA** | **Stub** | [web/src/App.tsx](../web/src/App.tsx) | Skeleton Vite setup. `App.tsx` contains only a placeholder page. Needs timeline, search, details views, and SSE client wrapper. |
+| **Mastodon Client** | **Complete** | [internal/mastodon/client.go](../internal/mastodon/client.go) | Real-time WebSocket streaming with periodic REST backfill on reconnect. |
+| **Ring Buffer** | **Complete** | [internal/buffer/buffer.go](../internal/buffer/buffer.go) | Thread-safe, bounded in-memory buffer with lock-free atomic snapshot reads. |
+| **Search Index** | **Complete** | [internal/index/](../internal/index/) | Handles full-text search indexing with MeiliSearch and fallback NoopIndex. |
+| **Ingest Pipeline** | **Complete** | [internal/ingest/ingest.go](../internal/ingest/ingest.go) | Orchestrates fan-out streaming, debounced search index batching, and client SSE registrations. |
+| **HTTP API Router** | **Complete** | [internal/api/router.go](../internal/api/router.go) | Routes requests for timelines, searches, streams, and health probes. |
+| **HTTP API Handlers**| **Complete** | [internal/api/](../internal/api/) | Full implementations for timeline, search, stream handlers, and health endpoints. |
+| **Main Entrypoint** | **Complete** | [cmd/minidon/main.go](../cmd/minidon/main.go) | Wires component initialization, CLI/Web modes, and graceful shutdown lifecycle. |
+| **Frontend SPA** | **Complete** | [web/src/App.tsx](../web/src/App.tsx) | App UI with timeline streams, debounced search, detailed modals, and connection indicators. |

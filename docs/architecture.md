@@ -1,9 +1,5 @@
 # minidon — Architecture
 
-> Sections 3 (HTTP API & Static Assets), 6 (Build), and 7 (Configuration) are now
-> implemented. Remaining component descriptions (Mastodon client, ingest, buffer,
-> index) are still planned.
-
 ---
 
 ## 1. Goals & Non-Goals
@@ -122,11 +118,11 @@ type Index interface {
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/timeline?limit=N` | Most-recent N statuses from the ring buffer (default 50, max 200) — **returns 501** |
-| GET | `/api/search?q=&limit=&offset=` | Full-text search via MeiliSearch — **returns 501** |
-| GET | `/api/stream` | SSE stream — **returns 501** |
+| GET | `/api/timeline?limit=N` | Most-recent N statuses from the ring buffer (default 50, max 200) |
+| GET | `/api/search?q=&limit=&offset=` | Full-text search via MeiliSearch |
+| GET | `/api/stream` | SSE stream |
 | GET | `/healthz` | Liveness probe — always 200 OK |
-| GET | `/readyz` | Readiness probe — 200 OK (will check Mastodon connection when wired) |
+| GET | `/readyz` | Readiness probe — 200 OK (checks Mastodon connection status) |
 
 Routes are registered using Go 1.22 `http.ServeMux` method+pattern matching
 (e.g. `mux.HandleFunc("GET /api/timeline", ...)`). The SPA handler is mounted
