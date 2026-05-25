@@ -28,14 +28,14 @@ import (
 
 func main() {
 	var cfg config.Config
-	ctx := kong.Parse(&cfg,
+	kongCtx := kong.Parse(&cfg,
 		kong.Name("minidon"),
 		kong.Description("A Mastodon public-timeline streaming web app."),
 		kong.UsageOnError(),
 	)
 
 	var logWriter io.Writer = os.Stdout
-	if ctx.Command() == "cli" {
+	if kongCtx.Command() == "cli" {
 		logWriter = os.Stderr
 	}
 
@@ -46,7 +46,7 @@ func main() {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
 
-	if ctx.Command() == "cli" {
+	if kongCtx.Command() == "cli" {
 		if err := cfg.ValidateMastodon(); err != nil {
 			fmt.Fprintf(os.Stderr, "configuration error: %v\n", err)
 			os.Exit(1)
