@@ -4,7 +4,7 @@
 # Usage: ./scripts/dev.sh
 #
 # Prerequisites:
-#   - Go 1.22+ on PATH
+#   - Go 1.26+ on PATH
 #   - Node 20+ and npm on PATH
 #   - A running MeiliSearch instance (or start via docker compose)
 #

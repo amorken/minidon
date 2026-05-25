@@ -74,26 +74,34 @@ Connects to `wss://<instance>/api/v1/streaming?stream=public`.
 
 ### Ingest Pipeline (`internal/ingest`)
 
-Single goroutine that fans out from one source channel to three consumers:
+A single goroutine that consumes a stream of `*model.Event` from the Mastodon client and coordinates storage, indexing, and live streaming:
 
-1. **Ring buffer** — synchronous write (fast, bounded).
-2. **MeiliSearch batch writer** — debounced: flush every 1 s _or_ every 100
-   documents, whichever comes first.
-3. **SSE fan-out** — broadcasts to all currently-registered `http.ResponseWriter`
-   SSE clients; slow clients are dropped after a configurable timeout.
+1. **Ring Buffer Integration**: 
+   - **New Statuses**: Synchronously added to the ring buffer (with O(1) duplicate checks).
+   - **Edits**: Synchronously updated in place.
+   - **Deletions**: Synchronously removed by status ID.
+2. **Search Index Batching & Deletion**:
+   - New and edited statuses are accumulated and batch-written (upserted) to MeiliSearch when either **1 second has elapsed** or **100 statuses are queued**, whichever comes first.
+   - Upon receiving a deletion event, the pipeline flushes the current index batch first to preserve correct order, then immediately deletes the status by ID from the MeiliSearch index.
+3. **SSE Fan-Out**:
+   - Broadcasts only new statuses (`EventTypeStatus`) to all active, registered SSE subscriber channels. Slow clients that block are dropped using non-blocking channel sends to prevent pipeline backpressure.
+4. **State Persistence**:
+   - The pipeline tracks the highest snowflake ID processed so far. After writing a batch to MeiliSearch, it persists this `since_id` state in MeiliSearch (under the `minidon_state` index and `pagination` document ID) for crash recovery.
 
-`Subscribe` / `Unsubscribe` methods allow the HTTP stream handler to register and
-deregister clients safely (uses an internal mutex or channel-based actor pattern).
+`Subscribe` / `Unsubscribe` methods allow the HTTP stream handler to register and deregister client channels safely under a read-write mutex.
 
 ### Ring Buffer (`internal/buffer`)
 
-Bounded, in-memory, thread-safe slice of `*model.Status`.
+Bounded, in-memory, thread-safe cache of recent statuses.
 
 - Default capacity: 500 items; configurable via `MINIDON_BUFFER_SIZE`.
 - Eviction: oldest entry dropped when capacity is exceeded.
-- `Recent(n int)` returns the n most-recent statuses in reverse chronological order.
-- Write locking: `sync.Mutex` protects writes; reads use an `atomic.Pointer` swap
-  of an immutable snapshot for lock-free concurrent reads.
+- Interface methods:
+  - `Add(s *model.Status) bool`: Appends a status. Avoids duplicates using a lookup map.
+  - `Update(s *model.Status) bool`: Updates an existing status in place.
+  - `Delete(id string) bool`: Removes a status by ID.
+  - `Recent(n int) []*model.Status`: Returns the `n` most recent statuses in reverse chronological order.
+- Concurrency design: A write mutex (`sync.Mutex`) protects writes (`Add`, `Update`, `Delete`) and internal slices. Reads (`Recent`) are lock-free and query an immutable snapshot of statuses stored in an `atomic.Pointer[[]*model.Status]`, which is swapped after every write operation. An internal `map[string]struct{}` provides $O(1)$ duplicate checks and lookup/eviction capability.
 
 ### Index (`internal/index`)
 
@@ -101,18 +109,24 @@ Interface:
 
 ```go
 type Index interface {
-    Index(statuses []model.Status) error
-    Search(query string, opts SearchOptions) (SearchResult, error)
+	Index(statuses []model.Status) error
+	Delete(ctx context.Context, id string) error
+	Search(ctx context.Context, query string, opts SearchOptions) (SearchResult, error)
+	EnsureSettings(ctx context.Context) error
+	GetSinceID(ctx context.Context) (string, error)
+	SaveSinceID(ctx context.Context, sinceID string) error
 }
 ```
 
 **MeiliSearch implementation** (`meili.go`):
 
 - Primary index name: `statuses`.
+- State index name: `minidon_state` (document ID `pagination` stores the `since_id` string).
 - Searchable attributes: `content`, `account.acct`, `account.display_name`, `tags.name`.
 - Sortable: `created_at`.
 - Filterable: `language`, `tags.name`.
-- `EnsureSettings()` applies the above configuration idempotently on startup.
+- **API Key Resolution**: Resolves the "Default Admin API Key" automatically using the master key provided via `MINIDON_MEILI_KEY`.
+- **Ensure Settings**: Applies the searchable, sortable, and filterable configuration idempotently on startup. If MeiliSearch is booting up, it retries with a backoff (up to 5 attempts, waiting 2 seconds between attempts).
 
 ### HTTP API (`internal/api`)
 
@@ -124,7 +138,7 @@ type Index interface {
 | GET | `/healthz` | Liveness probe — always 200 OK |
 | GET | `/readyz` | Readiness probe — 200 OK (checks Mastodon connection status) |
 
-Routes are registered using Go 1.22 `http.ServeMux` method+pattern matching
+Routes are registered using Go 1.22+ `http.ServeMux` method+pattern matching
 (e.g. `mux.HandleFunc("GET /api/timeline", ...)`). The SPA handler is mounted
 on `GET /` with lower priority than specific patterns.
 
@@ -198,7 +212,7 @@ passed to `static.NewHandler(fsys)`.
 
 ```sh
 make web    # Node 20: npm ci && npm run build → web/dist/
-make build  # Go 1.22: go build → bin/minidon (embeds web/dist)
+make build  # Go 1.26: go build → bin/minidon (embeds web/dist)
 ```
 
 The resulting binary is self-contained: `go:embed` bundles `web/dist` into the
@@ -209,7 +223,7 @@ executable at compile time. Running `./bin/minidon` (or `./bin/minidon web`) sta
 
 ```
 Stage 1: node:20-alpine   — npm ci && npm run build
-Stage 2: golang:1.22-alpine — go build (copies web/dist from stage 1)
+Stage 2: golang:1.26-alpine — go build (copies web/dist from stage 1)
 Stage 3: distroless/static-debian12:nonroot — final image, binary only
 ```
 
@@ -267,17 +281,13 @@ The application supports two subcommands:
 
 ---
 
-## 9. Open Questions & Tradeoffs
+## 9. Decisions & Technical Tradeoffs
 
-### Streaming transport
-- `mattn/go-mastodon` WebSocket wrapper vs. a hand-rolled `gorilla/websocket` client.
-  The mattn library simplifies auth and event parsing but adds a dependency; a raw
-  client would have full control over reconnect semantics.
+### Streaming Transport Choice
+- **Decision**: Used the `mattn/go-mastodon` library. It simplifies authentication, token handling, and streaming protocol parsing. We built a robust reconnection wrapper around it with exponential backoff + jitter and a REST-based catch-up backfill. Integration tests simulate Mastodon stream endpoints to verify correct reconnection behavior.
 
-### Buffer deduplication on reconnect
-- After reconnect, the REST backfill may return statuses already in the buffer.
-  Options: (a) skip on duplicate ID (requires ID lookup — O(1) with a map),
-  (b) accept duplicates and let clients dedup. Map approach preferred.
+### Buffer Deduplication on Reconnect
+- **Decision**: Implemented duplicate filtering (skipping on duplicate ID using a thread-safe map inside `Buffer`). This prevents duplicate statuses from accumulating in the in-memory cache and MeiliSearch index during REST backfills.
 
 ### Streaming transport for browser clients
 
@@ -323,9 +333,8 @@ MeiliSearch chosen for first pass; interface design allows substitution.
 
 - Multiple Mastodon instance support (fan-in from several streams).
 - Authentication (OAuth2 flow for user timelines or administrative access).
-- Persistent buffer across restarts (append-only log, SQLite, or BadgerDB).
+- Persistent buffer across restarts (using an embedded DB like SQLite or BadgerDB).
 - Rate-limit handling (respect `X-RateLimit-*` headers from Mastodon REST).
 - Media proxying / caching (avoid hotlinking Mastodon media URLs).
 - CI/CD pipeline (GitHub Actions: lint → test → docker push).
-- Test strategy: unit tests for buffer and ingest; integration tests with a mock
-  Mastodon streaming server; end-to-end tests with Playwright.
+- End-to-end browser testing (e.g., using Playwright).

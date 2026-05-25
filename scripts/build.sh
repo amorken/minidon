@@ -6,7 +6,7 @@
 # Output: bin/minidon (statically linked, frontend assets embedded)
 #
 # Prerequisites:
-#   - Go 1.22+ on PATH
+#   - Go 1.26+ on PATH
 #   - Node 20+ and npm on PATH (unless --skip-web is passed)
 
 set -euo pipefail
@@ -38,4 +38,4 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/minidon ./cmd/minidon
 
 echo ""
 echo "Build complete → bin/minidon"
-echo "Run with: MINIDON_MASTODON_INSTANCE=mastodon.social ./bin/minidon"
+echo "Run with: MINIDON_MASTODON_INSTANCE=https://mstdn.social ./bin/minidon"

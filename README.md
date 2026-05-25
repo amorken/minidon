@@ -3,7 +3,7 @@
 > A Mastodon public-timeline streaming web app: live feed, full-text search,
 > single-binary deployment.
 
-**Status**: early scaffolding — source files are stubs; no business logic implemented yet.
+**Status**: Fully implemented demo and experiment playground for streaming Mastodon timelines with Go, React/TypeScript, and MeiliSearch.
 
 ---
 
@@ -22,7 +22,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full design.
 
 | Tool | Minimum version |
 |------|----------------|
-| Go   | 1.22            |
+| Go   | 1.26            |
 | Node | 20              |
 | Docker & Compose | optional, for containerised deployment |
 
@@ -40,7 +40,7 @@ make web
 make build
 
 # 3. Run
-MINIDON_MASTODON_INSTANCE=mastodon.social ./bin/minidon
+MINIDON_MASTODON_INSTANCE=https://mstdn.social ./bin/minidon
 ```
 
 Open <http://localhost:8080> in your browser.
@@ -57,15 +57,43 @@ This starts `minidon` and a `meilisearch` container with a shared named volume.
 
 ## Configuration
 
-All settings are read from environment variables (12-factor).
+All settings can be configured via command-line flags or environment variables (12-factor), parsed using the Kong library. 
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MINIDON_LISTEN` | `:8080` | TCP address to listen on |
-| `MINIDON_MASTODON_INSTANCE` | *(required)* | Mastodon instance hostname, e.g. `mastodon.social` |
-| `MINIDON_MEILI_URL` | `http://localhost:7700` | MeiliSearch base URL |
-| `MINIDON_MEILI_KEY` | `""` | MeiliSearch API key (leave empty for no-auth dev) |
-| `MINIDON_BUFFER_SIZE` | `500` | Number of recent statuses kept in the ring buffer |
+An example dotenv template is provided in [.env.example](file:///home/anders/git/minidon/.env.example). You can copy this template to set your environment variables:
+
+```sh
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+You can export these variables into your shell or run the application by prefixing command execution (e.g., `export $(cat .env | xargs) && ./bin/minidon`).
+
+The application supports two subcommands:
+* `web`: Run the web application server (default, if no command is specified).
+* `cli`: Run the streaming timeline client CLI.
+
+### Global Options
+
+| Command Line Flag | Environment Variable | Default | Description |
+|-------------------|----------------------|---------|-------------|
+| `--disable-search` | `MINIDON_DISABLE_SEARCH` | `false` | Disable search functionality / MeiliSearch connection |
+| `--listen` | `MINIDON_LISTEN` | `:8080` | TCP listen address to listen on |
+| `--mastodon-instance` | `MINIDON_MASTODON_INSTANCE` | *(required)* | Mastodon instance hostname, e.g., `mastodon.social` |
+| `--mastodon-client-id` | `MINIDON_MASTODON_CLIENT_ID` | `""` | Mastodon client ID |
+| `--mastodon-client-secret` | `MINIDON_MASTODON_CLIENT_SECRET` | `""` | Mastodon client secret |
+| `--mastodon-access-token` | `MINIDON_MASTODON_ACCESS_TOKEN` | *(required)* | Mastodon access token |
+| `--mastodon-stream-path` | `MINIDON_MASTODON_STREAM_PATH` | `api/v1/streaming` | Mastodon streaming API path |
+| `--mastodon-stream` | `MINIDON_MASTODON_STREAM` | `public` | Mastodon stream type: `user`, `public`, `user:local`, or `public:local` |
+| `--meili-url` | `MINIDON_MEILI_URL` | `http://localhost:7700` | MeiliSearch base URL |
+| `--meili-key` | `MINIDON_MEILI_KEY` | `""` | MeiliSearch API key (supports Default Admin Key resolution using master key) |
+| `--buffer-size` | `MINIDON_BUFFER_SIZE` | `500` | Ring buffer capacity |
+| `-v, --verbose` | `MINIDON_VERBOSE` | `false` | Enable verbose logging |
+
+### `cli` Command Options
+
+| Command Line Flag | Default | Description |
+|-------------------|---------|-------------|
+| `--format` | `json` | Output format for cli mode: `json` or `text` |
 
 ---
 
