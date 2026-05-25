@@ -14,6 +14,12 @@ func NewHandler(fsys fs.FS) http.Handler {
 	}
 	fileServer := http.FileServer(http.FS(sub))
 
+	serveSPA := func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = "/"
+		setCacheHeaders(w, "/index.html")
+		fileServer.ServeHTTP(w, r)
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -29,18 +35,18 @@ func NewHandler(fsys fs.FS) http.Handler {
 
 		name := strings.TrimPrefix(cleanPath, "/")
 		f, err := sub.Open(name)
-		if err == nil {
-			stat, statErr := f.Stat()
-			f.Close()
-			if statErr == nil && !stat.IsDir() {
-				setCacheHeaders(w, cleanPath)
-				fileServer.ServeHTTP(w, r)
-				return
-			}
+		if err != nil {
+			serveSPA(w, r)
+			return
+		}
+		stat, statErr := f.Stat()
+		f.Close()
+		if statErr != nil || stat.IsDir() {
+			serveSPA(w, r)
+			return
 		}
 
-		r.URL.Path = "/"
-		setCacheHeaders(w, "/index.html")
+		setCacheHeaders(w, cleanPath)
 		fileServer.ServeHTTP(w, r)
 	})
 }
