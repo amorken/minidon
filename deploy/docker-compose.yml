@@ -13,7 +13,7 @@ services:
       MINIDON_LISTEN: ":8080"
       MINIDON_MASTODON_INSTANCE: "${MINIDON_MASTODON_INSTANCE:-mastodon.social}"
       MINIDON_MEILI_URL: "http://meilisearch:7700"
-      MINIDON_MEILI_KEY: "${MINIDON_MEILI_KEY:-}"
+      MINIDON_MEILI_KEY: "${MINIDON_MEILI_KEY:-minidon-default-master-key-change-me}"
       MINIDON_BUFFER_SIZE: "${MINIDON_BUFFER_SIZE:-500}"
     depends_on:
       meilisearch:
@@ -22,11 +22,11 @@ services:
       - minidon-net
 
   meilisearch:
-    image: getmeili/meilisearch:latest
+    image: docker.io/getmeili/meilisearch:latest
     restart: unless-stopped
     environment:
       MEILI_ENV: production
-      MEILI_MASTER_KEY: "${MINIDON_MEILI_KEY:-changeme}"
+      MEILI_MASTER_KEY: "${MINIDON_MEILI_KEY:-minidon-default-master-key-change-me}"
     volumes:
       - meili-data:/meili_data
     healthcheck:
