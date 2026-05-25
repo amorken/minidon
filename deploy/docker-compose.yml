@@ -35,6 +35,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    ports:
+      - "7700:7700"
     networks:
       - minidon-net
 
