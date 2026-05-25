@@ -71,6 +71,28 @@ func (m *meiliIndex) Search(ctx context.Context, query string, opts SearchOption
 	}, nil
 }
 
+func (m *meiliIndex) applySettings(ctx context.Context) error {
+	attemptCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	searchable := []string{"content", "account.acct", "account.display_name", "tags.name"}
+	if _, err := m.index.UpdateSearchableAttributesWithContext(attemptCtx, &searchable); err != nil {
+		return fmt.Errorf("failed to update searchable attributes: %w", err)
+	}
+
+	sortable := []string{"created_at"}
+	if _, err := m.index.UpdateSortableAttributesWithContext(attemptCtx, &sortable); err != nil {
+		return fmt.Errorf("failed to update sortable attributes: %w", err)
+	}
+
+	filterable := []any{"language", "tags.name"}
+	if _, err := m.index.UpdateFilterableAttributesWithContext(attemptCtx, &filterable); err != nil {
+		return fmt.Errorf("failed to update filterable attributes: %w", err)
+	}
+
+	return nil
+}
+
 // EnsureSettings applies searchable, sortable, and filterable index configuration idempotently.
 // If MeiliSearch is starting up, it retries with a backoff.
 func (m *meiliIndex) EnsureSettings(ctx context.Context) error {
@@ -82,38 +104,14 @@ func (m *meiliIndex) EnsureSettings(ctx context.Context) error {
 		default:
 		}
 
-		// Create a separate child context with timeout for settings update calls to avoid blocking indefinitely when MeiliSearch is offline
-		attemptCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-
-		searchable := []string{"content", "account.acct", "account.display_name", "tags.name"}
-		_, err = m.index.UpdateSearchableAttributesWithContext(attemptCtx, &searchable)
-		if err != nil {
-			cancel()
-			slog.Warn("meili: failed to update searchable attributes, retrying...", "err", err)
-			m.sleep(ctx, 2*time.Second)
-			continue
+		err = m.applySettings(ctx)
+		if err == nil {
+			slog.Info("meili: settings applied successfully")
+			return nil
 		}
 
-		sortable := []string{"created_at"}
-		_, err = m.index.UpdateSortableAttributesWithContext(attemptCtx, &sortable)
-		if err != nil {
-			cancel()
-			slog.Warn("meili: failed to update sortable attributes, retrying...", "err", err)
-			m.sleep(ctx, 2*time.Second)
-			continue
-		}
-
-		filterable := []any{"language", "tags.name"}
-		_, err = m.index.UpdateFilterableAttributesWithContext(attemptCtx, &filterable)
-		cancel()
-		if err != nil {
-			slog.Warn("meili: failed to update filterable attributes, retrying...", "err", err)
-			m.sleep(ctx, 2*time.Second)
-			continue
-		}
-
-		slog.Info("meili: settings applied successfully")
-		return nil
+		slog.Warn("meili: failed to apply settings, retrying...", "err", err)
+		m.sleep(ctx, 2*time.Second)
 	}
 
 	return fmt.Errorf("meili: failed to apply settings after retries: %w", err)
