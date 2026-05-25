@@ -51,6 +51,13 @@ func (p *Pipeline) Unsubscribe(ch chan *model.Status) {
 // Start runs the ingest pipeline processing loop. It consumes events from the
 // source client channel and distributes them to the ring buffer, search index, and subscribers.
 func (p *Pipeline) Start(ctx context.Context) {
+	var lastProcessedID string
+	if stateID, err := p.idx.GetSinceID(ctx); err != nil {
+		slog.Warn("ingest pipeline failed to load initial since_id state", "err", err)
+	} else {
+		lastProcessedID = stateID
+	}
+
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -67,6 +74,23 @@ func (p *Pipeline) Start(ctx context.Context) {
 			return
 		}
 		slog.Debug("ingest pipeline indexed batch", "count", len(batch))
+
+		var maxID string
+		for _, s := range batch {
+			if model.IsNewerID(s.ID, maxID) {
+				maxID = s.ID
+			}
+		}
+
+		if model.IsNewerID(maxID, lastProcessedID) {
+			lastProcessedID = maxID
+			if err := p.idx.SaveSinceID(ctx, lastProcessedID); err != nil {
+				slog.Error("ingest pipeline failed to save since_id state", "err", err)
+			} else {
+				slog.Debug("ingest pipeline saved since_id state", "id", lastProcessedID)
+			}
+		}
+
 		batch = batch[:0]
 	}
 

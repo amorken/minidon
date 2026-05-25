@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -197,4 +198,47 @@ func (m *meiliIndex) sleep(ctx context.Context, d time.Duration) {
 	case <-timer.C:
 	case <-ctx.Done():
 	}
+}
+
+type SinceIDState struct {
+	ID      string `json:"id"`
+	SinceID string `json:"since_id"`
+}
+
+func (m *meiliIndex) GetSinceID(ctx context.Context) (string, error) {
+	if err := m.initialize(ctx); err != nil {
+		return "", fmt.Errorf("meili: failed to initialize client: %w", err)
+	}
+
+	var state SinceIDState
+	err := m.client.Index("minidon_state").GetDocumentWithContext(ctx, "pagination", nil, &state)
+	if err != nil {
+		var meiliErr *meilisearch.Error
+		if errors.As(err, &meiliErr) {
+			if meiliErr.StatusCode == http.StatusNotFound || meiliErr.MeilisearchApiError.Code == "document_not_found" || meiliErr.MeilisearchApiError.Code == "index_not_found" {
+				return "", nil
+			}
+		}
+		return "", fmt.Errorf("meili: failed to get since_id state: %w", err)
+	}
+	return state.SinceID, nil
+}
+
+func (m *meiliIndex) SaveSinceID(ctx context.Context, sinceID string) error {
+	if err := m.initialize(ctx); err != nil {
+		return fmt.Errorf("meili: failed to initialize client: %w", err)
+	}
+
+	state := []SinceIDState{
+		{
+			ID:      "pagination",
+			SinceID: sinceID,
+		},
+	}
+
+	_, err := m.client.Index("minidon_state").AddDocumentsWithContext(ctx, state, nil)
+	if err != nil {
+		return fmt.Errorf("meili: failed to save since_id state: %w", err)
+	}
+	return nil
 }

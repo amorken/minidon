@@ -2,6 +2,8 @@ package index_test
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -101,6 +103,86 @@ func TestMeiliIndex_Initialize(t *testing.T) {
 	err := idx.EnsureSettings(context.Background())
 	if err != nil {
 		t.Fatalf("EnsureSettings failed: %v", err)
+	}
+}
+
+func TestMeiliIndex_SinceID(t *testing.T) {
+	var savedPayload []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer master-key-123" && auth != "Bearer admin-key-xyz" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		if r.URL.Path == "/keys" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"results": [
+					{
+						"name": "Default Admin API Key",
+						"key": "admin-key-xyz"
+					}
+				]
+			}`))
+			return
+		}
+
+		if r.URL.Path == "/indexes/minidon_state/documents" && r.Method == "POST" {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			savedPayload = body
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"taskUid": 1}`))
+			return
+		}
+
+		if r.URL.Path == "/indexes/minidon_state/documents/pagination" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			if savedPayload == nil {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"message":"Document not found","code":"document_not_found","type":"invalid_request","link":"https://docs.meilisearch.com/errors#document_not_found"}`))
+				return
+			}
+			var list []map[string]interface{}
+			if err := json.Unmarshal(savedPayload, &list); err != nil || len(list) == 0 {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			docBytes, _ := json.Marshal(list[0])
+			_, _ = w.Write(docBytes)
+			return
+		}
+
+		http.Error(w, "Not Found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	idx := index.NewMeiliIndex(server.URL, "master-key-123")
+
+	val, err := idx.GetSinceID(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error on initial GetSinceID: %v", err)
+	}
+	if val != "" {
+		t.Errorf("expected empty since_id, got %q", val)
+	}
+
+	err = idx.SaveSinceID(context.Background(), "987654321")
+	if err != nil {
+		t.Fatalf("unexpected error on SaveSinceID: %v", err)
+	}
+
+	val, err = idx.GetSinceID(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error on GetSinceID after save: %v", err)
+	}
+	if val != "987654321" {
+		t.Errorf("expected since_id '987654321', got %q", val)
 	}
 }
 

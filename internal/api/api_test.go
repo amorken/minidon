@@ -43,6 +43,14 @@ func (m *mockSearchIndex) EnsureSettings(ctx context.Context) error {
 	return nil
 }
 
+func (m *mockSearchIndex) GetSinceID(ctx context.Context) (string, error) {
+	return "", nil
+}
+
+func (m *mockSearchIndex) SaveSinceID(ctx context.Context, sinceID string) error {
+	return nil
+}
+
 func TestReadyz(t *testing.T) {
 	buf := buffer.New(10)
 	idx := &mockSearchIndex{}

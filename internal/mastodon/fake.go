@@ -21,6 +21,8 @@ func NewFakeClient() *FakeClient {
 	}
 }
 
+func (f *FakeClient) SetSinceID(id string) {}
+
 func (f *FakeClient) Connect(_ context.Context) error {
 	f.connected.Store(true)
 	return nil

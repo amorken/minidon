@@ -17,6 +17,7 @@ type mockIndex struct {
 	mu      sync.Mutex
 	indexed []model.Status
 	deleted []string
+	sinceID string
 }
 
 func (m *mockIndex) Index(statuses []model.Status) error {
@@ -38,6 +39,19 @@ func (m *mockIndex) Search(ctx context.Context, query string, opts index.SearchO
 }
 
 func (m *mockIndex) EnsureSettings(ctx context.Context) error {
+	return nil
+}
+
+func (m *mockIndex) GetSinceID(ctx context.Context) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sinceID, nil
+}
+
+func (m *mockIndex) SaveSinceID(ctx context.Context, sinceID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sinceID = sinceID
 	return nil
 }
 

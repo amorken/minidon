@@ -196,3 +196,27 @@ func TestNextBackoff(t *testing.T) {
 		t.Errorf("expected backoff capped at 60s, got %v", b)
 	}
 }
+
+func TestIsNewerID(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want bool
+	}{
+		{"", "", false},
+		{"1", "", true},
+		{"", "1", false},
+		{"2", "1", true},
+		{"1", "2", false},
+		{"10", "2", true},
+		{"2", "10", false},
+		{"101", "100", true},
+		{"100", "101", false},
+	}
+
+	for _, tt := range tests {
+		got := model.IsNewerID(tt.a, tt.b)
+		if got != tt.want {
+			t.Errorf("model.IsNewerID(%q, %q) = %v; want %v", tt.a, tt.b, got, tt.want)
+		}
+	}
+}

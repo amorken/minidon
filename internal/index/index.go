@@ -40,6 +40,8 @@ type Index interface {
 	Delete(ctx context.Context, id string) error
 	Search(ctx context.Context, query string, opts SearchOptions) (SearchResult, error)
 	EnsureSettings(ctx context.Context) error
+	GetSinceID(ctx context.Context) (string, error)
+	SaveSinceID(ctx context.Context, sinceID string) error
 }
 
 type NoopIndex struct{}
@@ -62,5 +64,13 @@ func (n *NoopIndex) Search(ctx context.Context, query string, opts SearchOptions
 }
 
 func (n *NoopIndex) EnsureSettings(ctx context.Context) error {
+	return nil
+}
+
+func (n *NoopIndex) GetSinceID(ctx context.Context) (string, error) {
+	return "", nil
+}
+
+func (n *NoopIndex) SaveSinceID(ctx context.Context, sinceID string) error {
 	return nil
 }

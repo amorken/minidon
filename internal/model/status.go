@@ -43,3 +43,19 @@ type MediaAttachment struct {
 type Tag struct {
 	Name string `json:"name"`
 }
+
+// IsNewerID returns true if status ID a is newer than status ID b.
+// Mastodon IDs are numeric strings representing Snowflake IDs.
+// This function performs a length-safe lexicographical comparison.
+func IsNewerID(a, b string) bool {
+	if b == "" {
+		return a != ""
+	}
+	if a == "" {
+		return false
+	}
+	if len(a) != len(b) {
+		return len(a) > len(b)
+	}
+	return a > b
+}

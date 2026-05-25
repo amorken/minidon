@@ -141,6 +141,14 @@ func runWeb(cfg config.Config) {
 		slog.Warn("failed to ensure search index settings", "err", err)
 	}
 
+	var initialSinceID string
+	if stateID, err := idx.GetSinceID(appCtx); err != nil {
+		slog.Warn("failed to load initial since_id from index", "err", err)
+	} else if stateID != "" {
+		slog.Info("loaded initial since_id state", "since_id", stateID)
+		initialSinceID = stateID
+	}
+
 	// 3. Initialize Mastodon Client (or Fake Client in Dev mode)
 	var mClient mastodon.Client
 	if cfg.MastodonInstance != "" && cfg.MastodonAccessToken != "" {
@@ -155,6 +163,8 @@ func runWeb(cfg config.Config) {
 		if err != nil {
 			slog.Error("failed to create Mastodon client; falling back to fake client", "err", err)
 			mClient = mastodon.NewFakeClient()
+		} else if initialSinceID != "" {
+			mClient.SetSinceID(initialSinceID)
 		}
 	} else {
 		slog.Warn("MINIDON_MASTODON_INSTANCE or ACCESS_TOKEN not set or invalid. Falling back to FakeClient.")

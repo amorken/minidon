@@ -19,6 +19,7 @@ type Client interface {
 	Events() <-chan *model.Event
 	IsConnected() bool
 	Close() error
+	SetSinceID(id string)
 }
 
 type Config struct {
@@ -61,6 +62,9 @@ type mastodonClient struct {
 	done        chan struct{}
 	closeOnce   sync.Once
 	isConnected atomic.Bool
+
+	muSince     sync.Mutex
+	sinceID     string
 }
 
 func (m *mastodonClient) IsConnected() bool {
@@ -83,6 +87,37 @@ func (m *mastodonClient) Close() error {
 
 func (m *mastodonClient) closeOut() {
 	m.closeOnce.Do(func() { close(m.out) })
+}
+
+func (m *mastodonClient) SetSinceID(id string) {
+	m.muSince.Lock()
+	defer m.muSince.Unlock()
+	m.sinceID = id
+}
+
+func (m *mastodonClient) getSinceID() string {
+	m.muSince.Lock()
+	defer m.muSince.Unlock()
+	return m.sinceID
+}
+
+func (m *mastodonClient) updateSinceID(id string) {
+	m.muSince.Lock()
+	defer m.muSince.Unlock()
+	if model.IsNewerID(id, m.sinceID) {
+		m.sinceID = id
+	}
+}
+
+func (m *mastodonClient) getTimelinePage(ctx context.Context, pg *mstdn.Pagination) ([]*mstdn.Status, error) {
+	switch m.cfg.Stream {
+	case "public":
+		return m.client.GetTimelinePublic(ctx, false, pg)
+	case "public:local":
+		return m.client.GetTimelinePublic(ctx, true, pg)
+	default:
+		return m.client.GetTimelineHome(ctx, pg)
+	}
 }
 
 func (m *mastodonClient) stream(ctx context.Context) {
@@ -144,35 +179,73 @@ func (m *mastodonClient) backfill(ctx context.Context) {
 	default:
 	}
 
-	slog.Info("starting mastodon REST backfill", "server", m.cfg.Server, "stream", m.cfg.Stream)
-	var statuses []*mstdn.Status
-	var err error
-	switch m.cfg.Stream {
-	case "public":
-		statuses, err = m.client.GetTimelinePublic(ctx, false, nil)
-	case "public:local":
-		statuses, err = m.client.GetTimelinePublic(ctx, true, nil)
-	default:
-		statuses, err = m.client.GetTimelineHome(ctx, nil)
+	sinceID := m.getSinceID()
+	var allStatuses []*mstdn.Status
+
+	if sinceID == "" {
+		slog.Info("starting mastodon REST backfill", "server", m.cfg.Server, "stream", m.cfg.Stream)
+		var err error
+		allStatuses, err = m.getTimelinePage(ctx, nil)
+		if err != nil {
+			slog.Error("mastodon REST backfill error", "err", err)
+			return
+		}
+	} else {
+		slog.Info("starting mastodon REST backfill catch-up", "server", m.cfg.Server, "stream", m.cfg.Stream, "since_id", sinceID)
+		var maxID string
+		pageCount := 0
+		const maxPages = 50
+		for pageCount < maxPages {
+			select {
+			case <-ctx.Done():
+				return
+			case <-m.done:
+				return
+			default:
+			}
+
+			pg := &mstdn.Pagination{
+				SinceID: mstdn.ID(sinceID),
+			}
+			if maxID != "" {
+				pg.MaxID = mstdn.ID(maxID)
+			}
+
+			page, err := m.getTimelinePage(ctx, pg)
+			if err != nil {
+				slog.Error("mastodon REST backfill error in pagination loop", "err", err)
+				break
+			}
+			if len(page) == 0 {
+				break
+			}
+
+			allStatuses = append(allStatuses, page...)
+			pageCount++
+
+			oldestID := string(page[len(page)-1].ID)
+			if oldestID == maxID {
+				break
+			}
+			maxID = oldestID
+		}
+		slog.Info("mastodon REST backfill catch-up finished", "pages_fetched", pageCount, "total_statuses", len(allStatuses))
 	}
 
-	if err != nil {
-		slog.Error("mastodon REST backfill error", "err", err)
-		return
-	}
-
-	slog.Info("mastodon REST backfill fetched statuses", "count", len(statuses))
+	slog.Info("mastodon REST backfill writing statuses to output channel", "count", len(allStatuses))
 
 	// Send statuses from oldest to newest to preserve chronological ordering
-	for i := len(statuses) - 1; i >= 0; i-- {
+	for i := len(allStatuses) - 1; i >= 0; i-- {
+		status := convertStatus(allStatuses[i])
+		m.updateSinceID(status.ID)
 		select {
 		case <-ctx.Done():
 			return
 		case <-m.done:
 			return
-		case m.out <- &model.Event{Type: model.EventTypeStatus, Status: convertStatus(statuses[i])}:
+		case m.out <- &model.Event{Type: model.EventTypeStatus, Status: status}:
 		default:
-			slog.Warn("mastodon output channel full during backfill, dropping status", "id", statuses[i].ID)
+			slog.Warn("mastodon output channel full during backfill, dropping status", "id", allStatuses[i].ID)
 		}
 	}
 }
@@ -192,13 +265,15 @@ func (m *mastodonClient) drain(ctx context.Context, events chan mstdn.Event) boo
 			switch e := ev.(type) {
 			case *mstdn.UpdateEvent:
 				slog.Debug("received mastodon update event", "id", e.Status.ID)
+				status := convertStatus(e.Status)
+				m.updateSinceID(status.ID)
 				if needsBackfill {
 					slog.Info("reconnect detected, triggering REST backfill")
 					go m.backfill(ctx)
 					needsBackfill = false
 				}
 				select {
-				case m.out <- &model.Event{Type: model.EventTypeStatus, Status: convertStatus(e.Status)}:
+				case m.out <- &model.Event{Type: model.EventTypeStatus, Status: status}:
 				default:
 					slog.Warn("mastodon output channel full, dropping status", "id", e.Status.ID)
 				}
