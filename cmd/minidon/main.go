@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -230,6 +231,9 @@ func main() {
 	srv := &http.Server{
 		Addr:         cfg.Listen,
 		Handler:      mux,
+		BaseContext: func(l net.Listener) context.Context {
+			return appCtx
+		},
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -244,21 +248,28 @@ func main() {
 	}()
 
 	// Wait for termination signal
-	quit := make(chan os.Signal, 1)
+	quit := make(chan os.Signal, 2)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
 	slog.Info("shutting down HTTP server", "signal", sig)
 
-	// 1. Gracefully stop HTTP server first (stops handling new requests, closes active SSE streams)
+	// Force immediate exit if a second interrupt signal is received during shutdown
+	go func() {
+		sig2 := <-quit
+		slog.Warn("forced immediate shutdown requested", "signal", sig2)
+		os.Exit(1)
+	}()
+
+	// 1. Cancel app context first (propagates to active connection request contexts via BaseContext)
+	slog.Info("stopping ingest pipeline and active connections")
+	appCancel()
+
+	// 2. Gracefully stop HTTP server
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown error", "err", err)
 	}
-
-	// 2. Cancel app context (stops ingest pipeline and background tickers)
-	slog.Info("stopping ingest pipeline")
-	appCancel()
 
 	// 3. Close Mastodon client
 	slog.Info("closing mastodon client")
