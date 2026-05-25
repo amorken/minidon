@@ -206,8 +206,8 @@ make build  # Go 1.22: go build → bin/minidon (embeds web/dist)
 ```
 
 The resulting binary is self-contained: `go:embed` bundles `web/dist` into the
-executable at compile time. Running `./bin/minidon` starts an HTTP server on
-`:8080` (configurable via `MINIDON_LISTEN`) that serves the SPA and API routes.
+executable at compile time. Running `./bin/minidon` (or `./bin/minidon web`) starts an HTTP server on
+`:8080` (configurable via `--listen` or `MINIDON_LISTEN`) that serves the SPA and API routes. Alternatively, running `./bin/minidon cli` runs the streaming client CLI.
 
 ### Docker (Multi-Stage)
 
@@ -232,16 +232,34 @@ named volume for Meili data and an isolated bridge network.
 
 ## 7. Configuration
 
-All settings via environment variables (12-factor):
+All settings can be configured via command-line flags or environment variables, parsed using the [Kong](https://github.com/alecthomas/kong) library.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MINIDON_LISTEN` | `:8080` | TCP listen address |
-| `MINIDON_MASTODON_INSTANCE` | *(required)* | Mastodon instance hostname |
-| `MINIDON_MEILI_URL` | `http://localhost:7700` | MeiliSearch URL |
-| `MINIDON_MEILI_KEY` | `""` | MeiliSearch API key |
-| `MINIDON_DISABLE_SEARCH` | `false` | Disable search functionality / MeiliSearch connection |
-| `MINIDON_BUFFER_SIZE` | `500` | Ring buffer capacity |
+The application supports two subcommands:
+* `web`: Run the web application server (default, if no command is specified).
+* `cli`: Run the streaming timeline client CLI.
+
+### Global Options
+
+| Command Line Flag | Environment Variable | Default | Description |
+|-------------------|----------------------|---------|-------------|
+| `--disable-search` | `MINIDON_DISABLE_SEARCH` | `false` | Disable search functionality / MeiliSearch connection |
+| `--listen` | `MINIDON_LISTEN` | `:8080` | TCP listen address to listen on |
+| `--mastodon-instance` | `MINIDON_MASTODON_INSTANCE` | *(required)* | Mastodon instance hostname |
+| `--mastodon-client-id` | `MINIDON_MASTODON_CLIENT_ID` | `""` | Mastodon client ID |
+| `--mastodon-client-secret` | `MINIDON_MASTODON_CLIENT_SECRET` | `""` | Mastodon client secret |
+| `--mastodon-access-token` | `MINIDON_MASTODON_ACCESS_TOKEN` | *(required)* | Mastodon access token |
+| `--mastodon-stream-path` | `MINIDON_MASTODON_STREAM_PATH` | `api/v1/streaming` | Mastodon streaming API path |
+| `--mastodon-stream` | `MINIDON_MASTODON_STREAM` | `public` | Mastodon stream type: `user` or `public` |
+| `--meili-url` | `MINIDON_MEILI_URL` | `http://localhost:7700` | MeiliSearch base URL |
+| `--meili-key` | `MINIDON_MEILI_KEY` | `""` | MeiliSearch API key |
+| `--buffer-size` | `MINIDON_BUFFER_SIZE` | `500` | Ring buffer capacity |
+| `-v, --verbose` | `MINIDON_VERBOSE` | `false` | Enable verbose logging |
+
+### `cli` Command Options
+
+| Command Line Flag | Default | Description |
+|-------------------|---------|-------------|
+| `--format` | `json` | Output format for cli mode: `json` or `text` |
 
 ---
 

@@ -68,9 +68,18 @@ You can build and test the project using the following `make` targets:
   ```sh
   make web
   ```
-* **Build and run the application** (must define `MINIDON_MASTODON_INSTANCE` and `MINIDON_MASTODON_ACCESS_TOKEN`):
+* **Build and run the application** (must define `MINIDON_MASTODON_INSTANCE` and `MINIDON_MASTODON_ACCESS_TOKEN` via environment variables or command-line flags):
+  Using environment variables:
   ```sh
   MINIDON_MASTODON_INSTANCE=mastodon.social MINIDON_MASTODON_ACCESS_TOKEN=your-token make run
+  ```
+  Or directly using command-line flags on the compiled binary:
+  ```sh
+  ./bin/minidon --mastodon-instance=mastodon.social --mastodon-access-token=your-token
+  ```
+  To run the CLI subcommand instead:
+  ```sh
+  ./bin/minidon cli --format=text --mastodon-instance=mastodon.social --mastodon-access-token=your-token
   ```
 * **Clean build artifacts** (removes built binary and compiled frontend assets):
   ```sh
@@ -177,16 +186,23 @@ Follow these specifications for implementing each component to ensure your code 
   * `GET /readyz`: Check if the Mastodon streaming client is connected before returning `200 OK` (else `503 Service Unavailable`).
 
 ### E. Wiring in `main.go`
-* Create context that is cancelled on `SIGINT` / `SIGTERM`.
-* Instantiate the configuration.
-* Instantiate `buffer.Buffer` and `index.Index` (MeiliSearch).
-* Call `index.EnsureSettings()`.
-* Instantiate `mastodon.Client`. Choose either the live client (configured via environment variables) or a mock/fake client for tests.
-* Instantiate `ingest.Pipeline` passing the client's output channel.
-* Start the ingest pipeline loop in a goroutine (`go pipeline.Start(ctx)`).
-* Start the Mastodon client connection in a goroutine (`go client.Connect(ctx)`).
-* Construct the router using `api.NewRouter(...)` and pass references to the buffer, index, and pipeline.
-* Start the `http.Server`. On shutdown, gracefully stop the HTTP server first, then the ingest pipeline, and finally close the Mastodon client.
+* Parse the configuration using the `kong` library. Kong maps command-line arguments, subcommands (`web` and `cli`), and environment variables directly into the `config.Config` struct.
+* Setup structured logging using `log/slog` (redirected to `os.Stderr` when running the `cli` subcommand to keep stdout clean, and configured for debug log level if the `--verbose` flag is passed).
+* Define the execution path depending on the subcommand:
+  * **CLI Mode (`cli` subcommand)**:
+    * Validate Mastodon credentials.
+    * Initialize the Mastodon client and stream statuses.
+    * Print statuses to `stdout` in the selected `--format` (`json` or `text`).
+    * Stop gracefully upon receiving `SIGINT` / `SIGTERM`.
+  * **Web Mode (`web` subcommand or default)**:
+    * Optionally warn if Mastodon configuration is missing, falling back to a `FakeClient` to generate mock data.
+    * Instantiate the thread-safe bounded `buffer.Buffer` and `index.Index` (MeiliSearch index or no-op search index).
+    * Call `index.EnsureSettings()` on startup.
+    * Initialize the `mastodon.Client`.
+    * Instantiate the `ingest.Pipeline` passing the client's output channel.
+    * Start the ingest pipeline and connect the Mastodon stream in their respective goroutines.
+    * Construct the router using `api.NewRouter(...)` and pass references to the buffer, index, and pipeline.
+    * Start the `http.Server`. On shutdown, gracefully stop the HTTP server first, then the ingest pipeline, and finally close the Mastodon client.
 
 ### F. Frontend SPA (`web/src/App.tsx`)
 * Replace the placeholder with a responsive layout.

@@ -9,7 +9,7 @@ While the documentation outlines a complete architecture, the implementation is 
 | Component | Status | Location | Notes |
 | :--- | :--- | :--- | :--- |
 | **Data Model** | **Complete** | [internal/model/status.go](../internal/model/status.go) | Defines the shared `Status` and related DTOs. |
-| **Config Loader** | **Complete** | [internal/config/config.go](../internal/config/config.go) | Loads settings from environment variables, including disabling search. |
+| **Config Loader** | **Complete** | [internal/config/config.go](../internal/config/config.go) | Loads settings from CLI flags and environment variables via Kong, supporting subcommands. |
 | **Static Assets** | **Complete** | [internal/static/static.go](../internal/static/static.go) | Implements embedding/serving with caching policies. |
 | **Mastodon Client** | **Partial** | [internal/mastodon/client.go](../internal/mastodon/client.go) | Streaming connection is built. **Missing**: Periodic REST fallback (backfill) on reconnect to prevent gaps in timeline. Not yet wired in `main.go`. |
 | **Ring Buffer** | **Stub** | [internal/buffer/buffer.go](../internal/buffer/buffer.go) | Contains only package-level doc comments. Needs struct and implementation. |
