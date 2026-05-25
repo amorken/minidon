@@ -178,6 +178,7 @@ func (m *mastodonClient) backfill(ctx context.Context) {
 }
 
 func (m *mastodonClient) drain(ctx context.Context, events chan mstdn.Event) bool {
+	needsBackfill := false
 	for {
 		select {
 		case <-m.done:
@@ -191,6 +192,11 @@ func (m *mastodonClient) drain(ctx context.Context, events chan mstdn.Event) boo
 			switch e := ev.(type) {
 			case *mstdn.UpdateEvent:
 				slog.Debug("received mastodon update event", "id", e.Status.ID)
+				if needsBackfill {
+					slog.Info("reconnect detected, triggering REST backfill")
+					go m.backfill(ctx)
+					needsBackfill = false
+				}
 				select {
 				case m.out <- convertStatus(e.Status):
 				default:
@@ -198,6 +204,7 @@ func (m *mastodonClient) drain(ctx context.Context, events chan mstdn.Event) boo
 				}
 			case *mstdn.ErrorEvent:
 				slog.Error("mastodon stream error event", "err", e.Err)
+				needsBackfill = true
 			default:
 				slog.Debug("mastodon unhandled event type", "type", fmt.Sprintf("%T", ev))
 			}
