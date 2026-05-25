@@ -103,7 +103,7 @@ func (m *meiliIndex) EnsureSettings(ctx context.Context) error {
 			continue
 		}
 
-		filterable := []interface{}{"language", "tags.name"}
+		filterable := []any{"language", "tags.name"}
 		_, err = m.index.UpdateFilterableAttributesWithContext(attemptCtx, &filterable)
 		cancel()
 		if err != nil {
