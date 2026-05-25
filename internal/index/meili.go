@@ -239,7 +239,10 @@ func (m *meiliIndex) SaveSinceID(ctx context.Context, sinceID string) error {
 		},
 	}
 
-	_, err := m.client.Index("minidon_state").AddDocumentsWithContext(ctx, state, nil)
+	primaryKey := "id"
+	_, err := m.client.Index("minidon_state").AddDocumentsWithContext(ctx, state, &meilisearch.DocumentOptions{
+		PrimaryKey: &primaryKey,
+	})
 	if err != nil {
 		return fmt.Errorf("meili: failed to save since_id state: %w", err)
 	}
