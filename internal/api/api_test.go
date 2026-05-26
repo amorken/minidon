@@ -256,18 +256,13 @@ func TestStatuszRoute(t *testing.T) {
 		t.Fatalf("failed to decode statusz response: %v", err)
 	}
 
-	// Verify Mastodon status
-	if resp.Dependencies.Mastodon == nil {
-		t.Fatal("expected mastodon dependency status to be present")
-	}
-	if !resp.Dependencies.Mastodon.Connected || resp.Dependencies.Mastodon.Server != "fake-server" || resp.Dependencies.Mastodon.Stream != "fake-stream" {
-		t.Errorf("unexpected mastodon status: %+v", resp.Dependencies.Mastodon)
+		// Verify Mastodon status
+	mast := resp.Dependencies.Mastodon
+	if !mast.Connected || mast.Server != "fake-server" || mast.Stream != "fake-stream" {
+		t.Errorf("unexpected mastodon status: %+v", mast)
 	}
 
 	// Verify MeiliSearch status
-	if resp.Dependencies.MeiliSearch == nil {
-		t.Fatal("expected meilisearch dependency status to be present")
-	}
 	m := resp.Dependencies.MeiliSearch
 	if !m.Enabled || !m.Connected || m.URL != "http://localhost:7700" || m.Error != "" {
 		t.Errorf("unexpected meilisearch status: %+v", m)

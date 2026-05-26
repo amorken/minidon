@@ -38,8 +38,8 @@ type MeiliSearchStatus struct {
 }
 
 type DependenciesStatus struct {
-	Mastodon    *MastodonStatus    `json:"mastodon,omitempty"`
-	MeiliSearch *MeiliSearchStatus `json:"meilisearch,omitempty"`
+	Mastodon    MastodonStatus    `json:"mastodon"`
+	MeiliSearch MeiliSearchStatus `json:"meilisearch"`
 }
 
 type StatuszResponse struct {
@@ -85,40 +85,34 @@ func NewRouter(cfg RouterConfig) *http.ServeMux {
 	})
 
 	mux.HandleFunc("GET /statusz", func(w http.ResponseWriter, r *http.Request) {
-		var mStatus *MastodonStatus
-		if cfg.Client != nil {
-			mStatus = &MastodonStatus{
-				Connected: cfg.Client.IsConnected(),
-				Server:    cfg.Client.Server(),
-				Stream:    cfg.Client.Stream(),
+		mStatus := MastodonStatus{
+			Connected: cfg.Client.IsConnected(),
+			Server:    cfg.Client.Server(),
+			Stream:    cfg.Client.Stream(),
+		}
+
+		url := cfg.Index.URL()
+		enabled := url != ""
+		var connected bool
+		var statsErr string
+		var stats any
+
+		if enabled {
+			var err error
+			stats, err = cfg.Index.Stats(r.Context())
+			if err != nil {
+				statsErr = err.Error()
+			} else {
+				connected = true
 			}
 		}
 
-		var meiliStatus *MeiliSearchStatus
-		if cfg.Index != nil {
-			url := cfg.Index.URL()
-			enabled := url != ""
-			var connected bool
-			var statsErr string
-			var stats any
-
-			if enabled {
-				var err error
-				stats, err = cfg.Index.Stats(r.Context())
-				if err != nil {
-					statsErr = err.Error()
-				} else {
-					connected = true
-				}
-			}
-
-			meiliStatus = &MeiliSearchStatus{
-				Enabled:   enabled,
-				Connected: connected,
-				URL:       url,
-				Error:     statsErr,
-				Stats:     stats,
-			}
+		meiliStatus := MeiliSearchStatus{
+			Enabled:   enabled,
+			Connected: connected,
+			URL:       url,
+			Error:     statsErr,
+			Stats:     stats,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
