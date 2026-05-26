@@ -55,6 +55,14 @@ func (m *mockIndex) SaveSinceID(ctx context.Context, sinceID string) error {
 	return nil
 }
 
+func (m *mockIndex) Stats(ctx context.Context) (any, error) {
+	return nil, nil
+}
+
+func (m *mockIndex) URL() string {
+	return ""
+}
+
 func TestPipeline_Start(t *testing.T) {
 	src := make(chan *model.Event, 10)
 	buf := buffer.New(5)

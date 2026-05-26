@@ -46,12 +46,12 @@ Mastodon instance
 └────────────┘  └─────────────────┘  └─────────────────┘
        ▲                  ▲
        │                  │
-┌─────────────────────────────────────────────────────┐
-│  internal/api  — HTTP handlers                       │
-│  GET /api/timeline   GET /api/search   GET /api/stream│
-│  GET /healthz        GET /readyz                     │
-│  GET /*  → embedded SPA (internal/static)            │
-└─────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  internal/api  — HTTP handlers                         │
+│  GET /api/timeline   GET /api/search   GET /api/stream │
+│  GET /healthz        GET /readyz       GET /statusz    │
+│  GET /*  → embedded SPA (internal/static)              │
+└────────────────────────────────────────────────────────┘
        ▲
        │  HTTP
   Browser SPA (web/dist, embedded in binary)
@@ -135,8 +135,9 @@ type Index interface {
 | GET | `/api/timeline?limit=N` | Most-recent N statuses from the ring buffer (default 50, max 200) |
 | GET | `/api/search?q=&limit=&offset=` | Full-text search via MeiliSearch |
 | GET | `/api/stream` | SSE stream |
-| GET | `/healthz` | Liveness probe — always 200 OK |
+| GET | `/healthz` | Liveness probe — returns JSON status (200 OK / 500 Internal Server Error) |
 | GET | `/readyz` | Readiness probe — 200 OK (checks Mastodon connection status) |
+| GET | `/statusz` | Status probe — returns detailed dependency status and stats |
 
 Routes are registered using Go 1.22+ `http.ServeMux` method+pattern matching
 (e.g. `mux.HandleFunc("GET /api/timeline", ...)`). The SPA handler is mounted

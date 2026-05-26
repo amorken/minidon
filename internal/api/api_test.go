@@ -18,6 +18,9 @@ import (
 type mockSearchIndex struct {
 	searchedQuery string
 	searchOpts    index.SearchOptions
+	mockStats     any
+	mockStatsErr  error
+	mockURL       string
 }
 
 func (m *mockSearchIndex) Index(statuses []model.Status) error {
@@ -49,6 +52,14 @@ func (m *mockSearchIndex) GetSinceID(ctx context.Context) (string, error) {
 
 func (m *mockSearchIndex) SaveSinceID(ctx context.Context, sinceID string) error {
 	return nil
+}
+
+func (m *mockSearchIndex) Stats(ctx context.Context) (any, error) {
+	return m.mockStats, m.mockStatsErr
+}
+
+func (m *mockSearchIndex) URL() string {
+	return m.mockURL
 }
 
 func TestReadyz(t *testing.T) {
@@ -171,5 +182,156 @@ func TestSearchRoute(t *testing.T) {
 	mux.ServeHTTP(rrErr, reqErr)
 	if rrErr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 on missing q, got %d", rrErr.Code)
+	}
+}
+
+func TestHealthzRoute(t *testing.T) {
+	buf := buffer.New(10)
+	idx := &mockSearchIndex{}
+	fc := mastodon.NewFakeClient()
+	pipe := ingest.New(fc.Events(), buf, idx)
+
+	// 1. All initialized (healthy)
+	mux := api.NewRouter(api.RouterConfig{
+		StaticFS: nil,
+		Buffer:   buf,
+		Index:    idx,
+		Pipeline: pipe,
+		Client:   fc,
+	})
+
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var healthyResp api.HealthResponse
+	if err := json.NewDecoder(rr.Body).Decode(&healthyResp); err != nil {
+		t.Fatalf("failed to decode health response: %v", err)
+	}
+
+	if healthyResp.Status != "healthy" || !healthyResp.Initialized || healthyResp.Uptime == "" {
+		t.Errorf("unexpected health response payload: %+v", healthyResp)
+	}
+
+	// 2. Missing dependency (unhealthy)
+	muxUnhealthy := api.NewRouter(api.RouterConfig{
+		StaticFS: nil,
+		Buffer:   nil, // missing
+		Index:    idx,
+		Pipeline: pipe,
+		Client:   fc,
+	})
+
+	rr2 := httptest.NewRecorder()
+	muxUnhealthy.ServeHTTP(rr2, req)
+
+	if rr2.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rr2.Code)
+	}
+
+	var unhealthyResp api.HealthResponse
+	if err := json.NewDecoder(rr2.Body).Decode(&unhealthyResp); err != nil {
+		t.Fatalf("failed to decode health response: %v", err)
+	}
+
+	if unhealthyResp.Status != "unhealthy" || unhealthyResp.Initialized {
+		t.Errorf("unexpected unhealthy response payload: %+v", unhealthyResp)
+	}
+}
+
+func TestStatuszRoute(t *testing.T) {
+	buf := buffer.New(10)
+	idx := &mockSearchIndex{
+		mockURL: "http://localhost:7700",
+		mockStats: map[string]any{
+			"databaseSize": int64(1234),
+			"indexes": map[string]any{
+				"statuses": map[string]any{
+					"numberOfDocuments": int64(42),
+				},
+			},
+		},
+	}
+	fc := mastodon.NewFakeClient()
+	pipe := ingest.New(fc.Events(), buf, idx)
+
+	mux := api.NewRouter(api.RouterConfig{
+		StaticFS: nil,
+		Buffer:   buf,
+		Index:    idx,
+		Pipeline: pipe,
+		Client:   fc,
+	})
+
+	_ = fc.Connect(context.Background())
+
+	req := httptest.NewRequest("GET", "/statusz", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp api.StatuszResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode statusz response: %v", err)
+	}
+
+	// Verify Mastodon status
+	if resp.Dependencies.Mastodon == nil {
+		t.Fatal("expected mastodon dependency status to be present")
+	}
+	if !resp.Dependencies.Mastodon.Connected || resp.Dependencies.Mastodon.Server != "fake-server" || resp.Dependencies.Mastodon.Stream != "fake-stream" {
+		t.Errorf("unexpected mastodon status: %+v", resp.Dependencies.Mastodon)
+	}
+
+	// Verify MeiliSearch status
+	if resp.Dependencies.MeiliSearch == nil {
+		t.Fatal("expected meilisearch dependency status to be present")
+	}
+	m := resp.Dependencies.MeiliSearch
+	if !m.Enabled || !m.Connected || m.URL != "http://localhost:7700" || m.Error != "" {
+		t.Errorf("unexpected meilisearch status: %+v", m)
+	}
+	statsMap, ok := m.Stats.(map[string]any)
+	if !ok {
+		t.Fatalf("expected stats to be a map, got %T", m.Stats)
+	}
+	if statsMap["databaseSize"] != float64(1234) { // json unmarshals numbers to float64 by default
+		t.Errorf("expected databaseSize 1234, got %v", statsMap["databaseSize"])
+	}
+
+	// 2. Verify disabled MeiliSearch status
+	idxDisabled := &mockSearchIndex{
+		mockURL: "",
+	}
+	muxDisabled := api.NewRouter(api.RouterConfig{
+		StaticFS: nil,
+		Buffer:   buf,
+		Index:    idxDisabled,
+		Pipeline: pipe,
+		Client:   fc,
+	})
+
+	rr2 := httptest.NewRecorder()
+	muxDisabled.ServeHTTP(rr2, req)
+
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr2.Code)
+	}
+
+	var respDisabled api.StatuszResponse
+	if err := json.NewDecoder(rr2.Body).Decode(&respDisabled); err != nil {
+		t.Fatalf("failed to decode disabled statusz response: %v", err)
+	}
+
+	mDisabled := respDisabled.Dependencies.MeiliSearch
+	if mDisabled.Enabled || mDisabled.Connected || mDisabled.URL != "" || mDisabled.Stats != nil {
+		t.Errorf("expected disabled meilisearch status, got: %+v", mDisabled)
 	}
 }

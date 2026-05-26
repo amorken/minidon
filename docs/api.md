@@ -95,7 +95,17 @@ es.addEventListener('status', (e) => {
 
 ### `GET /healthz`
 
-Liveness probe. Always returns `200 OK` as long as the process is running.
+Liveness probe. Returns JSON payload describing the service status and uptime. Returns `200 OK` if the service is properly initialized, and `500 Internal Server Error` otherwise.
+
+**Response** — `200 OK`, `application/json`
+
+```json
+{
+  "status": "healthy",
+  "initialized": true,
+  "uptime": "10s"
+}
+```
 
 ---
 
@@ -103,6 +113,40 @@ Liveness probe. Always returns `200 OK` as long as the process is running.
 
 Readiness probe. Returns `200 OK` once the Mastodon streaming client is
 connected; returns `503 Service Unavailable` before that.
+
+---
+
+### `GET /statusz`
+
+Status probe. Returns detailed JSON status representing internal dependency health, server configurations, and index statistics.
+
+**Response** — `200 OK`, `application/json`
+
+```json
+{
+  "dependencies": {
+    "mastodon": {
+      "connected": true,
+      "server": "https://mastodon.social",
+      "stream": "public"
+    },
+    "meilisearch": {
+      "enabled": true,
+      "connected": true,
+      "url": "http://localhost:7700",
+      "stats": {
+        "databaseSize": 1234,
+        "lastUpdate": "2026-05-26T00:09:19Z",
+        "indexes": {
+          "statuses": {
+            "numberOfDocuments": 42
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 ---
 

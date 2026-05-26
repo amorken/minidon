@@ -20,6 +20,8 @@ type Client interface {
 	IsConnected() bool
 	Close() error
 	SetSinceID(id string)
+	Server() string
+	Stream() string
 }
 
 type Config struct {
@@ -93,6 +95,14 @@ func (m *mastodonClient) SetSinceID(id string) {
 	m.muSince.Lock()
 	defer m.muSince.Unlock()
 	m.sinceID = id
+}
+
+func (m *mastodonClient) Server() string {
+	return m.cfg.Server
+}
+
+func (m *mastodonClient) Stream() string {
+	return m.cfg.Stream
 }
 
 func (m *mastodonClient) getSinceID() string {

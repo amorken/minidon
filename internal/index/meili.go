@@ -248,3 +248,18 @@ func (m *meiliIndex) SaveSinceID(ctx context.Context, sinceID string) error {
 	}
 	return nil
 }
+
+func (m *meiliIndex) Stats(ctx context.Context) (any, error) {
+	if err := m.initialize(ctx); err != nil {
+		return nil, fmt.Errorf("meili: failed to initialize client: %w", err)
+	}
+	stats, err := m.client.GetStatsWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("meili: failed to get stats: %w", err)
+	}
+	return stats, nil
+}
+
+func (m *meiliIndex) URL() string {
+	return m.url
+}

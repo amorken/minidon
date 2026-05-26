@@ -42,6 +42,8 @@ type Index interface {
 	EnsureSettings(ctx context.Context) error
 	GetSinceID(ctx context.Context) (string, error)
 	SaveSinceID(ctx context.Context, sinceID string) error
+	Stats(ctx context.Context) (any, error)
+	URL() string
 }
 
 type NoopIndex struct{}
@@ -73,4 +75,12 @@ func (n *NoopIndex) GetSinceID(ctx context.Context) (string, error) {
 
 func (n *NoopIndex) SaveSinceID(ctx context.Context, sinceID string) error {
 	return nil
+}
+
+func (n *NoopIndex) Stats(ctx context.Context) (any, error) {
+	return nil, nil
+}
+
+func (n *NoopIndex) URL() string {
+	return ""
 }
