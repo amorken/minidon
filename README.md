@@ -56,7 +56,7 @@ cp dotenv.example .env
 Open `.env` and fill in the required credentials:
 * **Mastodon Instance**: Set `MINIDON_MASTODON_INSTANCE` (e.g., `https://mastodon.social`) and `MINIDON_MASTODON_ACCESS_TOKEN` (your access token, which can be generated under Development -> New Application in your Mastodon account settings).
 * **MeiliSearch**: Search functionality is enabled by default. You must either:
-  - **Run MeiliSearch**: Start the service (e.g., using `docker compose -f deploy/docker-compose.yml up meilisearch`) and ensure `.env` has `MINIDON_DISABLE_SEARCH=false` and `MINIDON_MEILI_KEY=minidon-default-master-key-change-me`.
+  - **Run MeiliSearch**: Start the service (e.g., using `docker compose -f deploy/docker-compose.yml up meilisearch`) and ensure `.env` has `MINIDON_DISABLE_SEARCH=false` and that `MINIDON_MEILI_KEY` matches the master key configured for the MeiliSearch container (defaults to `minidon-default-master-key-change-me`).
   - **Disable MeiliSearch**: If you do not want to run MeiliSearch, set `MINIDON_DISABLE_SEARCH=true` in your `.env`.
 
 ### 2. Local (binary)
