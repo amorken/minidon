@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 )
 
 type WebCmd struct{}
@@ -41,6 +42,11 @@ func (c *Config) Validate() error {
 }
 
 func (c *Config) ValidateMastodon() error {
+	c.MastodonInstance = strings.TrimSpace(c.MastodonInstance)
+	c.MastodonAccessToken = strings.TrimSpace(c.MastodonAccessToken)
+	c.MastodonClientID = strings.TrimSpace(c.MastodonClientID)
+	c.MastodonClientSecret = strings.TrimSpace(c.MastodonClientSecret)
+
 	if c.MastodonInstance == "" {
 		return fmt.Errorf("MINIDON_MASTODON_INSTANCE (or --mastodon-instance) is required")
 	}

@@ -202,6 +202,30 @@ func TestConfig_ValidateMastodon(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "ValidWithSpaces",
+			cfg: config.Config{
+				MastodonInstance:    "  mastodon.social  ",
+				MastodonAccessToken: "  secret-token  ",
+			},
+			wantErr: false,
+		},
+		{
+			name: "SpacesOnlyInstance",
+			cfg: config.Config{
+				MastodonInstance:    "   ",
+				MastodonAccessToken: "secret-token",
+			},
+			wantErr: true,
+		},
+		{
+			name: "SpacesOnlyToken",
+			cfg: config.Config{
+				MastodonInstance:    "mastodon.social",
+				MastodonAccessToken: "   ",
+			},
+			wantErr: true,
+		},
+		{
 			name: "MissingInstance",
 			cfg: config.Config{
 				MastodonAccessToken: "secret-token",

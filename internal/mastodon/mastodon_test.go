@@ -31,6 +31,20 @@ func TestNewValid(t *testing.T) {
 	}
 }
 
+func TestNewValidationTrimsSpaces(t *testing.T) {
+	c, err := New(Config{Server: "  https://mastodon.social  ", AccessToken: "  token  "})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	mc := c.(*mastodonClient)
+	if mc.cfg.Server != "https://mastodon.social" {
+		t.Errorf("expected server to be trimmed, got %q", mc.cfg.Server)
+	}
+	if mc.cfg.AccessToken != "token" {
+		t.Errorf("expected access token to be trimmed, got %q", mc.cfg.AccessToken)
+	}
+}
+
 func TestConvertStatusNil(t *testing.T) {
 	if convertStatus(nil) != nil {
 		t.Fatal("expected nil")

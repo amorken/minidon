@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,6 +34,11 @@ type Config struct {
 }
 
 func New(cfg Config) (Client, error) {
+	cfg.Server = strings.TrimSpace(cfg.Server)
+	cfg.AccessToken = strings.TrimSpace(cfg.AccessToken)
+	cfg.ClientID = strings.TrimSpace(cfg.ClientID)
+	cfg.ClientSecret = strings.TrimSpace(cfg.ClientSecret)
+
 	if cfg.Server == "" {
 		return nil, fmt.Errorf("mastodon: server is required")
 	}
