@@ -97,6 +97,16 @@ The application supports two subcommands:
 
 ---
 
+## Commands
+
+The `minidon` binary supports the following subcommands:
+
+- `web` (default): Runs the web application server.
+- `cli`: Runs the streaming timeline client CLI to print statuses to `stdout`.
+- `delete-index`: Clears all indexed statuses and Mastodon pagination state from MeiliSearch. Requires MeiliSearch to be configured and reachable.
+
+---
+
 ## Repository Layout
 
 ```

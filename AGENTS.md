@@ -81,6 +81,10 @@ You can build and test the project using the following `make` targets:
   ```sh
   ./bin/minidon cli --format=text --mastodon-instance=mastodon.social --mastodon-access-token=your-token
   ```
+  To run the delete-index subcommand instead:
+  ```sh
+  ./bin/minidon delete-index
+  ```
 * **Clean build artifacts** (removes built binary and compiled frontend assets):
   ```sh
   make clean
@@ -186,14 +190,17 @@ Review and verify these specifications for each component to ensure behavior mat
   * `GET /readyz`: Check if the Mastodon streaming client is connected before returning `200 OK` (else `503 Service Unavailable`).
 
 ### E. Wiring in `main.go`
-* Parse the configuration using the `kong` library. Kong maps command-line arguments, subcommands (`web` and `cli`), and environment variables directly into the `config.Config` struct.
-* Setup structured logging using `log/slog` (redirected to `os.Stderr` when running the `cli` subcommand to keep stdout clean, and configured for debug log level if the `--verbose` flag is passed).
+* Parse the configuration using the `kong` library. Kong maps command-line arguments, subcommands (`web`, `cli`, and `delete-index`), and environment variables directly into the `config.Config` struct.
+* Setup structured logging using `log/slog` (redirected to `os.Stderr` when running the `cli` and `delete-index` subcommands to keep stdout clean, and configured for debug log level if the `--verbose` flag is passed).
 * Define the execution path depending on the subcommand:
   * **CLI Mode (`cli` subcommand)**:
     * Validate Mastodon credentials.
     * Initialize the Mastodon client and stream statuses.
     * Print statuses to `stdout` in the selected `--format` (`json` or `text`).
     * Stop gracefully upon receiving `SIGINT` / `SIGTERM`.
+  * **Delete Index Mode (`delete-index` subcommand)**:
+    * Validate MeiliSearch reachability and configuration.
+    * Clear all documents from MeiliSearch indices.
   * **Web Mode (`web` subcommand or default)**:
     * Optionally warn if Mastodon configuration is missing, falling back to a `FakeClient` to generate mock data.
     * Instantiate the thread-safe bounded `buffer.Buffer` and `index.Index` (MeiliSearch index or no-op search index).

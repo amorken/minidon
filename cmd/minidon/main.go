@@ -38,9 +38,44 @@ func main() {
 	switch kongCtx.Command() {
 	case "cli":
 		runCLI(cfg)
+	case "delete-index":
+		runDeleteIndex(cfg)
 	default:
 		runWeb(cfg)
 	}
+}
+
+func runDeleteIndex(cfg config.Config) {
+	logWriter := io.Writer(os.Stderr)
+
+	logLevel := slog.LevelInfo
+	if cfg.Verbose {
+		logLevel = slog.LevelDebug
+	}
+
+	logger := slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: logLevel}))
+	slog.SetDefault(logger)
+
+	if cfg.DisableSearch {
+		slog.Error("cannot delete index: search is disabled via configuration")
+		os.Exit(1)
+	}
+
+	if cfg.MeiliURL == "" {
+		slog.Error("cannot delete index: MeiliSearch URL is not configured")
+		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	slog.Info("deleting meilisearch index and pagination state...")
+	if err := index.Clear(ctx, cfg.MeiliURL, cfg.MeiliKey); err != nil {
+		slog.Error("failed to clear search index", "err", err)
+		os.Exit(1)
+	}
+
+	slog.Info("successfully cleared search index and pagination state")
 }
 
 func runCLI(cfg config.Config) {

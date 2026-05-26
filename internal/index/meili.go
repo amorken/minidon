@@ -263,3 +263,39 @@ func (m *meiliIndex) Stats(ctx context.Context) (any, error) {
 func (m *meiliIndex) URL() string {
 	return m.url
 }
+
+// Clear removes all documents from the MeiliSearch "statuses" and "minidon_state" indices.
+// If the indices do not exist, the error is handled gracefully.
+func Clear(ctx context.Context, url, apiKey string) error {
+	m := &meiliIndex{
+		url:       url,
+		masterKey: apiKey,
+	}
+	if err := m.initialize(ctx); err != nil {
+		return fmt.Errorf("meili: failed to initialize client: %w", err)
+	}
+
+	slog.Info("meili: clearing all documents from statuses index")
+	_, err := m.index.DeleteAllDocumentsWithContext(ctx, nil)
+	if err != nil {
+		var meiliErr *meilisearch.Error
+		if errors.As(err, &meiliErr) && (meiliErr.StatusCode == http.StatusNotFound || meiliErr.MeilisearchApiError.Code == "index_not_found") {
+			slog.Debug("meili: statuses index not found, skipping document deletion")
+		} else {
+			return fmt.Errorf("meili: failed to clear statuses documents: %w", err)
+		}
+	}
+
+	slog.Info("meili: clearing pagination state from minidon_state index")
+	_, err = m.client.Index("minidon_state").DeleteAllDocumentsWithContext(ctx, nil)
+	if err != nil {
+		var meiliErr *meilisearch.Error
+		if errors.As(err, &meiliErr) && (meiliErr.StatusCode == http.StatusNotFound || meiliErr.MeilisearchApiError.Code == "index_not_found") {
+			slog.Debug("meili: minidon_state index not found, skipping pagination deletion")
+		} else {
+			return fmt.Errorf("meili: failed to clear pagination state: %w", err)
+		}
+	}
+
+	return nil
+}

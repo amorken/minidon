@@ -245,9 +245,11 @@ named volume for Meili data and an isolated bridge network.
 
 All settings can be configured via command-line flags or environment variables, parsed using the [Kong](https://github.com/alecthomas/kong) library.
 
-The application supports two subcommands:
+The application supports three subcommands:
 * `web`: Run the web application server (default, if no command is specified).
 * `cli`: Run the streaming timeline client CLI.
+* `delete-index`: Delete/clear out index state from MeiliSearch (both statuses and pagination state).
+
 
 ### Global Options
 
