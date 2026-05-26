@@ -73,13 +73,28 @@ Open <http://localhost:8080> in your browser.
 
 ### 3. Docker Compose
 
-To run the complete stack (both the web app and MeiliSearch) with Docker Compose, make sure `.env` contains your Mastodon credentials, then run:
+#### Option A: Run the entire stack in containers
+To run the complete stack (both the `minidon` web app and `meilisearch`) inside Docker containers:
+1. Make sure your `.env` contains your Mastodon credentials.
+2. Run:
+   ```sh
+   docker compose -f deploy/docker-compose.yml up
+   ```
+   This starts `minidon` and a `meilisearch` container with a shared named volume.
 
-```sh
-docker compose -f deploy/docker-compose.yml up
-```
-
-This starts `minidon` and a `meilisearch` container with a shared named volume.
+#### Option B: Run only MeiliSearch in a container, run minidon binary locally
+If you want to run the `minidon` binary locally/manually (e.g., for faster development iterations), but want Docker to handle running MeiliSearch:
+1. Start only the `meilisearch` service using Docker Compose:
+   ```sh
+   docker compose -f deploy/docker-compose.yml up meilisearch
+   ```
+2. Build and run the `minidon` binary locally in a separate terminal:
+   ```sh
+   # Build the application
+   make
+   # Run minidon locally with your environment variables
+   export $(grep -v '^#' .env | xargs) && ./bin/minidon
+   ```
 
 ---
 
