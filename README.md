@@ -7,6 +7,21 @@
 
 ---
 
+## Reviewer Notes
+
+This project is a toy/demo application designed as an experimental playground. Please keep the following notes in mind when reviewing the codebase:
+
+* **Toy Project Scope**: The application is intended as a demo of a single-binary deployment combining a Go backend and a React/TypeScript frontend.
+* **Search Limitations**:
+  * **No Search Pagination**: The search implementation is simple and does not support pagination. Results are requested with a hardcoded limit (maximum 40 results) in the frontend client.
+  * **No Relevance Ranking**: Search results rely on default MeiliSearch matching; there is no custom relevance ranking or weighting layer implemented.
+* **Key Architectural Features**:
+  * **Debounced Batch Indexing**: The Ingest Pipeline (`internal/ingest`) collects incoming statuses and flushes them to MeiliSearch in batches (every 1 second or 100 documents) to optimize write performance.
+  * **Non-Blocking SSE Streaming**: Server-Sent Events (SSE) stream updates to clients in real-time, utilizing non-blocking writes to prevent slow clients from blocking the core ingest loop.
+  * **Pagination Catch-up**: Stores the Mastodon pagination state in MeiliSearch, enabling the client to backfill missed statuses via REST API calls upon restarts.
+
+---
+
 ## Overview
 
 `minidon` connects to a Mastodon instance's public streaming API, maintains a
