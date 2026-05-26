@@ -15,9 +15,6 @@ MINIDON_MASTODON_CLIENT_SECRET=
 # Mastodon Access Token (required, get from Mastodon account settings -> Development -> New Application)
 MINIDON_MASTODON_ACCESS_TOKEN=your_access_token_here
 
-# Mastodon streaming API path
-MINIDON_MASTODON_STREAM_PATH=api/v1/streaming
-
 # Mastodon stream type: user, public, user:local, or public:local
 MINIDON_MASTODON_STREAM=public
 

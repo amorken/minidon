@@ -22,7 +22,6 @@ type Config struct {
 	MastodonClientID     string `kong:"env='MINIDON_MASTODON_CLIENT_ID',help='Mastodon client ID.'"`
 	MastodonClientSecret string `kong:"env='MINIDON_MASTODON_CLIENT_SECRET',help='Mastodon client secret.'"`
 	MastodonAccessToken  string `kong:"env='MINIDON_MASTODON_ACCESS_TOKEN',help='Mastodon access token.'"`
-	MastodonStreamPath   string `kong:"env='MINIDON_MASTODON_STREAM_PATH',default='api/v1/streaming',help='Mastodon streaming API path.'"`
 	MastodonStream       string `kong:"env='MINIDON_MASTODON_STREAM',default='public',enum='user,public,user:local,public:local',help='Mastodon stream type: user, public, user:local, or public:local.'"`
 	MeiliURL             string `kong:"env='MINIDON_MEILI_URL',default='http://localhost:7700',help='MeiliSearch base URL.'"`
 	MeiliKey             string `kong:"env='MINIDON_MEILI_KEY',help='MeiliSearch API key.'"`

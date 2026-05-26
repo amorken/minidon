@@ -150,15 +150,36 @@ func (m *mastodonClient) stream(ctx context.Context) {
 		default:
 		}
 
+		// Note: The go-mastodon package automatically resolves the instance-supplied
+		// streaming_api host for its HTTP/SSE streams (streaming.go), but it does NOT
+		// do so for WebSocket streams (streaming_ws.go) which statically use c.client.Config.Server.
+		// Since minidon uses the WebSocket client, we fetch the instance metadata and pass the
+		// custom streaming API URL directly to a new client config.
+		wsClient := m.ws
+		instance, err := m.client.GetInstance(ctx)
+		if err == nil && instance.URLs != nil {
+			if streamURL, ok := instance.URLs["streaming_api"]; ok && streamURL != "" {
+				streamingConfig := &mstdn.Config{
+					Server:       streamURL,
+					ClientID:     m.cfg.ClientID,
+					ClientSecret: m.cfg.ClientSecret,
+					AccessToken:  m.cfg.AccessToken,
+				}
+				wsClient = mstdn.NewClient(streamingConfig).NewWSClient()
+				slog.Debug("using instance-supplied streaming API path", "url", streamURL)
+			}
+		} else if err != nil {
+			slog.Debug("failed to fetch instance-supplied streaming API path, using default", "err", err)
+		}
+
 		var events chan mstdn.Event
-		var err error
 		switch m.cfg.Stream {
 		case "public":
-			events, err = m.ws.StreamingWSPublic(ctx, false)
+			events, err = wsClient.StreamingWSPublic(ctx, false)
 		case "public:local":
-			events, err = m.ws.StreamingWSPublic(ctx, true)
+			events, err = wsClient.StreamingWSPublic(ctx, true)
 		default:
-			events, err = m.ws.StreamingWSUser(ctx)
+			events, err = wsClient.StreamingWSUser(ctx)
 		}
 		if err != nil {
 			m.isConnected.Store(false)
