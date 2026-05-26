@@ -281,8 +281,6 @@ func (m *mastodonClient) backfill(ctx context.Context) {
 		case <-m.done:
 			return
 		case m.out <- &model.Event{Type: model.EventTypeStatus, Status: status}:
-		default:
-			slog.Warn("mastodon output channel full during backfill, dropping status", "id", allStatuses[i].ID)
 		}
 	}
 }
@@ -310,23 +308,29 @@ func (m *mastodonClient) drain(ctx context.Context, events chan mstdn.Event) boo
 					needsBackfill = false
 				}
 				select {
+				case <-ctx.Done():
+					return false
+				case <-m.done:
+					return false
 				case m.out <- &model.Event{Type: model.EventTypeStatus, Status: status}:
-				default:
-					slog.Warn("mastodon output channel full, dropping status", "id", e.Status.ID)
 				}
 			case *mstdn.UpdateEditEvent:
 				slog.Debug("received mastodon update edit event", "id", e.Status.ID)
 				select {
+				case <-ctx.Done():
+					return false
+				case <-m.done:
+					return false
 				case m.out <- &model.Event{Type: model.EventTypeStatusEdit, Status: convertStatus(e.Status)}:
-				default:
-					slog.Warn("mastodon output channel full, dropping status edit", "id", e.Status.ID)
 				}
 			case *mstdn.DeleteEvent:
 				slog.Debug("received mastodon delete event", "id", e.ID)
 				select {
+				case <-ctx.Done():
+					return false
+				case <-m.done:
+					return false
 				case m.out <- &model.Event{Type: model.EventTypeStatusDelete, StatusID: string(e.ID)}:
-				default:
-					slog.Warn("mastodon output channel full, dropping status delete", "id", e.ID)
 				}
 			case *mstdn.ErrorEvent:
 				slog.Error("mastodon stream error event", "err", e.Err)

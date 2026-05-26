@@ -234,3 +234,123 @@ func TestIsNewerID(t *testing.T) {
 		}
 	}
 }
+
+func TestClient_Backpressure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create a mastodonClient directly with a channel of size 1
+	out := make(chan *model.Event, 1)
+	m := &mastodonClient{
+		out:  out,
+		done: make(chan struct{}),
+	}
+
+	events := make(chan mstdn.Event, 10)
+
+	// Send two events to the events channel
+	events <- &mstdn.UpdateEvent{
+		Status: &mstdn.Status{
+			ID: "status-1",
+		},
+	}
+	events <- &mstdn.UpdateEvent{
+		Status: &mstdn.Status{
+			ID: "status-2",
+		},
+	}
+
+	// We'll run drain in a goroutine.
+	// Since out has capacity 1, the first status will fill the channel.
+	// The second status should block.
+	drainDone := make(chan bool)
+	go func() {
+		drainDone <- m.drain(ctx, events)
+	}()
+
+	// Wait a bit to ensure it had time to process and block
+	time.Sleep(50 * time.Millisecond)
+
+	// Check if drain has finished. It should still be running because it is blocked.
+	select {
+	case <-drainDone:
+		t.Fatal("drain exited prematurely, expected it to block due to backpressure")
+	default:
+		// Expected to block
+	}
+
+	// Read one event from out. This should unblock the second send.
+	select {
+	case ev := <-out:
+		if ev.Status.ID != "status-1" {
+			t.Errorf("expected status-1, got %s", ev.Status.ID)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting to read status-1 from out")
+	}
+
+	// Now read the second event.
+	select {
+	case ev := <-out:
+		if ev.Status.ID != "status-2" {
+			t.Errorf("expected status-2, got %s", ev.Status.ID)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting to read status-2 from out")
+	}
+
+	// Now close events to let drain exit cleanly
+	close(events)
+
+	select {
+	case result := <-drainDone:
+		if !result {
+			t.Error("expected drain to return true on clean close")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting for drain to exit after closing events channel")
+	}
+}
+
+func TestClient_BackpressureCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	out := make(chan *model.Event, 1)
+	m := &mastodonClient{
+		out:  out,
+		done: make(chan struct{}),
+	}
+
+	events := make(chan mstdn.Event, 10)
+
+	// Fill the out channel
+	out <- &model.Event{Type: model.EventTypeStatus, Status: &model.Status{ID: "blocking-event"}}
+
+	// Write to events to make drain try to send to the full out channel
+	events <- &mstdn.UpdateEvent{
+		Status: &mstdn.Status{
+			ID: "status-after-full",
+		},
+	}
+
+	drainDone := make(chan bool)
+	go func() {
+		drainDone <- m.drain(ctx, events)
+	}()
+
+	// Wait a bit to ensure it is blocked
+	time.Sleep(50 * time.Millisecond)
+
+	// Cancel context to trigger abort
+	cancel()
+
+	select {
+	case result := <-drainDone:
+		if result {
+			t.Error("expected drain to return false on context cancellation")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting for drain to exit after context cancellation")
+	}
+}
