@@ -22,7 +22,8 @@ MINIDON_MASTODON_STREAM=public
 MINIDON_MEILI_URL=http://localhost:7700
 
 # MeiliSearch Master API key (used to resolve Default Admin API Key)
-MINIDON_MEILI_KEY=your_meilisearch_master_key_here
+# The key below is the default key set in deploy/docker-compose.yml
+MINIDON_MEILI_KEY=minidon-default-master-key-change-me
 
 # Ring buffer size: number of recent statuses to hold in memory
 MINIDON_BUFFER_SIZE=500

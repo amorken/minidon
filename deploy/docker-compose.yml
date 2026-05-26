@@ -12,9 +12,15 @@ services:
     environment:
       MINIDON_LISTEN: ":8080"
       MINIDON_MASTODON_INSTANCE: "${MINIDON_MASTODON_INSTANCE:-mastodon.social}"
+      MINIDON_MASTODON_CLIENT_ID: "${MINIDON_MASTODON_CLIENT_ID:-}"
+      MINIDON_MASTODON_CLIENT_SECRET: "${MINIDON_MASTODON_CLIENT_SECRET:-}"
+      MINIDON_MASTODON_ACCESS_TOKEN: "${MINIDON_MASTODON_ACCESS_TOKEN:-}"
+      MINIDON_MASTODON_STREAM: "${MINIDON_MASTODON_STREAM:-public}"
       MINIDON_MEILI_URL: "http://meilisearch:7700"
       MINIDON_MEILI_KEY: "${MINIDON_MEILI_KEY:-minidon-default-master-key-change-me}"
       MINIDON_BUFFER_SIZE: "${MINIDON_BUFFER_SIZE:-500}"
+      MINIDON_DISABLE_SEARCH: "${MINIDON_DISABLE_SEARCH:-false}"
+      MINIDON_VERBOSE: "${MINIDON_VERBOSE:-false}"
     depends_on:
       meilisearch:
         condition: service_healthy

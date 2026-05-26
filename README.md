@@ -45,22 +45,35 @@ See [`docs/architecture.md`](docs/architecture.md) for the full design.
 
 ## Quick Start
 
-### Local (binary)
+### 1. Configuration Setup
+
+Copy the example dotenv file to `.env` and configure it:
 
 ```sh
-# 1. Build the frontend
-make web
+cp dotenv.example .env
+```
 
-# 2. Build the Go binary (embeds web/dist)
-make build
+Open `.env` and fill in the required credentials:
+* **Mastodon Instance**: Set `MINIDON_MASTODON_INSTANCE` (e.g., `https://mastodon.social`) and `MINIDON_MASTODON_ACCESS_TOKEN` (your access token, which can be generated under Development -> New Application in your Mastodon account settings).
+* **MeiliSearch**: Search functionality is enabled by default. You must either:
+  - **Run MeiliSearch**: Start the service (e.g., using `docker compose -f deploy/docker-compose.yml up meilisearch`) and ensure `.env` has `MINIDON_DISABLE_SEARCH=false` and `MINIDON_MEILI_KEY=minidon-default-master-key-change-me`.
+  - **Disable MeiliSearch**: If you do not want to run MeiliSearch, set `MINIDON_DISABLE_SEARCH=true` in your `.env`.
 
-# 3. Run
-MINIDON_MASTODON_INSTANCE=https://mstdn.social ./bin/minidon
+### 2. Local (binary)
+
+```sh
+# 1. Build the application (frontend assets and Go binary)
+make
+
+# 2. Run using your configured environment variables
+export $(grep -v '^#' .env | xargs) && ./bin/minidon
 ```
 
 Open <http://localhost:8080> in your browser.
 
-### Docker Compose
+### 3. Docker Compose
+
+To run the complete stack (both the web app and MeiliSearch) with Docker Compose, make sure `.env` contains your Mastodon credentials, then run:
 
 ```sh
 docker compose -f deploy/docker-compose.yml up
@@ -74,14 +87,14 @@ This starts `minidon` and a `meilisearch` container with a shared named volume.
 
 All settings can be configured via command-line flags or environment variables (12-factor), parsed using the Kong library. 
 
-An example dotenv template is provided in [dotenv.example](file:///home/anders/.gemini/antigravity/worktrees/minidon/remove-unused-streaming-path/dotenv.example). You can copy this template to set your environment variables:
+An example dotenv template is provided in [dotenv.example](dotenv.example). You can copy this template to set your environment variables:
 
 ```sh
 cp dotenv.example .env
 # Edit .env with your credentials
 ```
 
-You can export these variables into your shell or run the application by prefixing command execution (e.g., `export $(cat .env | xargs) && ./bin/minidon`).
+You can export these variables into your shell or run the application by prefixing command execution (e.g., `export $(grep -v '^#' .env | xargs) && ./bin/minidon`).
 
 The application supports two subcommands:
 * `web`: Run the web application server (default, if no command is specified).
