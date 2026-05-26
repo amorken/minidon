@@ -191,7 +191,6 @@ func TestHealthzRoute(t *testing.T) {
 	fc := mastodon.NewFakeClient()
 	pipe := ingest.New(fc.Events(), buf, idx)
 
-	// 1. All initialized (healthy)
 	mux := api.NewRouter(api.RouterConfig{
 		StaticFS: nil,
 		Buffer:   buf,
@@ -215,31 +214,6 @@ func TestHealthzRoute(t *testing.T) {
 
 	if healthyResp.Status != "healthy" || !healthyResp.Initialized || healthyResp.Uptime == "" {
 		t.Errorf("unexpected health response payload: %+v", healthyResp)
-	}
-
-	// 2. Missing dependency (unhealthy)
-	muxUnhealthy := api.NewRouter(api.RouterConfig{
-		StaticFS: nil,
-		Buffer:   nil, // missing
-		Index:    idx,
-		Pipeline: pipe,
-		Client:   fc,
-	})
-
-	rr2 := httptest.NewRecorder()
-	muxUnhealthy.ServeHTTP(rr2, req)
-
-	if rr2.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", rr2.Code)
-	}
-
-	var unhealthyResp api.HealthResponse
-	if err := json.NewDecoder(rr2.Body).Decode(&unhealthyResp); err != nil {
-		t.Fatalf("failed to decode health response: %v", err)
-	}
-
-	if unhealthyResp.Status != "unhealthy" || unhealthyResp.Initialized {
-		t.Errorf("unexpected unhealthy response payload: %+v", unhealthyResp)
 	}
 }
 

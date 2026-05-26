@@ -64,18 +64,11 @@ func NewRouter(cfg RouterConfig) *http.ServeMux {
 	mux.HandleFunc("GET /api/stream", streamHandler(cfg.Pipeline))
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		initialized := cfg.Buffer != nil && cfg.Index != nil && cfg.Pipeline != nil && cfg.Client != nil
-		status := "healthy"
 		w.Header().Set("Content-Type", "application/json")
-		if !initialized {
-			status = "unhealthy"
-			w.WriteHeader(http.StatusInternalServerError)
-		} else {
-			w.WriteHeader(http.StatusOK)
-		}
+		w.WriteHeader(http.StatusOK)
 		resp := HealthResponse{
-			Status:      status,
-			Initialized: initialized,
+			Status:      "healthy",
+			Initialized: true,
 			Uptime:      time.Since(startTime).Truncate(time.Second).String(),
 		}
 		_ = json.NewEncoder(w).Encode(resp)

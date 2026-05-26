@@ -135,7 +135,7 @@ type Index interface {
 | GET | `/api/timeline?limit=N` | Most-recent N statuses from the ring buffer (default 50, max 200) |
 | GET | `/api/search?q=&limit=&offset=` | Full-text search via MeiliSearch |
 | GET | `/api/stream` | SSE stream |
-| GET | `/healthz` | Liveness probe — returns JSON status (200 OK / 500 Internal Server Error) |
+| GET | `/healthz` | Liveness probe — returns JSON status (always 200 OK) |
 | GET | `/readyz` | Readiness probe — 200 OK (checks Mastodon connection status) |
 | GET | `/statusz` | Status probe — returns detailed dependency status and stats |
 

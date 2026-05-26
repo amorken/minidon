@@ -95,7 +95,7 @@ es.addEventListener('status', (e) => {
 
 ### `GET /healthz`
 
-Liveness probe. Returns JSON payload describing the service status and uptime. Returns `200 OK` if the service is properly initialized, and `500 Internal Server Error` otherwise.
+Liveness probe. Returns JSON payload describing the service status and uptime. Always returns `200 OK` if the process is running.
 
 **Response** — `200 OK`, `application/json`
 
